@@ -3,333 +3,358 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
-  <meta name="theme-color" content="#07111a" />
+  <meta name="theme-color" content="#061019" />
   <title>Taiwan Planet</title>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #05090e;
-      --ocean: #0a2332;
-      --land: #7f9d79;
-      --land-hi: #a5bc8d;
-      --line: rgba(223, 237, 215, 0.32);
-      --label: #f3f3ea;
-    }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body {
-      width: 100%; height: 100%; margin: 0; overflow: hidden;
-      overscroll-behavior: none; background: var(--bg); touch-action: none;
-      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-    }
-    body {
-      position: fixed; inset: 0;
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans TC", "PingFang TC", sans-serif;
-    }
-    #app, #stage, canvas, #labels {
-      position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none;
-    }
-    #app {
-      overflow: hidden;
-      background: radial-gradient(circle at 50% 42%, rgba(34, 63, 76, 0.18), transparent 36%), linear-gradient(180deg, #08131c 0%, #04070b 100%);
-    }
-    canvas { display: block; cursor: grab; }
-    body.dragging canvas { cursor: grabbing; }
-    #labels { z-index: 3; pointer-events: none; }
-    .label {
-      position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transform-origin: center;
-      white-space: nowrap; font-size: clamp(12px, 3.4vw, 18px); line-height: 1; font-weight: 650;
-      letter-spacing: 0.08em; color: var(--label);
-      text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 10px rgba(0,0,0,.7);
-      opacity: 0; transition: opacity 90ms linear; will-change: transform, opacity;
-    }
-    .label::before {
-      content: ""; position: absolute; left: 50%; top: calc(100% + 5px); width: 4px; height: 4px;
-      border-radius: 50%; transform: translateX(-50%); background: currentColor;
-      box-shadow: 0 0 0 2px rgba(7,17,26,.6); opacity: .72;
-    }
-    #hint {
-      position: absolute; z-index: 4; left: 50%; bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px));
-      transform: translateX(-50%); pointer-events: none; color: rgba(238,242,238,.66); font-size: 11px;
-      letter-spacing: .08em; text-align: center; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,.7);
-      transition: opacity 400ms ease;
-    }
-    body.interacted #hint { opacity: 0; }
+    :root { color-scheme: dark; --bg:#03070b; --label:#f4f3e8; }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html,body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--bg); touch-action:none; overscroll-behavior:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+    body { position:fixed; inset:0; font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"SF Pro Text","Noto Sans TC","PingFang TC",sans-serif; }
+    #app,#stage,#labels { position:absolute; inset:0; width:100%; height:100%; touch-action:none; }
+    #app { overflow:hidden; background:radial-gradient(circle at 50% 42%,rgba(40,76,91,.18),transparent 40%),linear-gradient(180deg,#07131c,#020509); }
+    canvas { display:block; width:100%; height:100%; cursor:grab; touch-action:none; }
+    body.dragging canvas { cursor:grabbing; }
+    #labels { z-index:3; pointer-events:none; }
+    .label { position:absolute; left:0; top:0; transform:translate(-50%,-50%); white-space:nowrap; color:var(--label); font-size:clamp(12px,3.5vw,18px); line-height:1; font-weight:700; letter-spacing:.08em; text-shadow:0 1px 3px #000,0 0 10px rgba(0,0,0,.82); opacity:0; will-change:transform,opacity; }
+    .label::before { content:""; position:absolute; left:50%; top:calc(100% + 5px); width:4px; height:4px; border-radius:50%; transform:translateX(-50%); background:currentColor; box-shadow:0 0 0 2px rgba(5,13,18,.7); opacity:.78; }
+    #hint,#status { position:absolute; z-index:4; left:50%; transform:translateX(-50%); pointer-events:none; text-align:center; white-space:nowrap; text-shadow:0 1px 3px #000; }
+    #hint { bottom:max(18px,calc(env(safe-area-inset-bottom) + 12px)); color:rgba(240,244,239,.66); font-size:11px; letter-spacing:.08em; transition:opacity .35s ease; }
+    #status { top:max(18px,calc(env(safe-area-inset-top) + 10px)); color:rgba(240,244,239,.74); font-size:11px; letter-spacing:.06em; }
+    body.interacted #hint { opacity:0; }
+    body.ready #status { opacity:0; transition:opacity .4s ease; }
   </style>
 </head>
 <body>
   <main id="app" aria-label="Taiwan Planet interactive globe">
     <div id="stage"></div>
     <div id="labels" aria-hidden="true"></div>
+    <div id="status">載入真正台灣行政區…</div>
     <div id="hint">單指旋轉・雙指縮放</div>
   </main>
+
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+    import { feature as topoFeature } from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
+
+    const DATA_URL = "https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/towns-10t.json";
+    const TARGETS = ["大同","中山","中正","大安","松山","信義"];
+    const MAINLAND_BOX = { minLon:120.0, maxLon:122.1, minLat:21.75, maxLat:25.55 };
+    const RADIUS = 1;
+    const MIN_CAMERA_Z = 2.1;
+    const MAX_CAMERA_Z = 5.4;
+    const ROTATION_SPEED = 0.0062;
+    const TEXTURE_W = 3072;
+    const TEXTURE_H = 1536;
 
     const stage = document.querySelector("#stage");
     const labelsLayer = document.querySelector("#labels");
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-    camera.position.set(0, 0, 3.4);
+    const statusEl = document.querySelector("#status");
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40,1,.1,100);
+    camera.position.set(0,0,3.35);
+
+    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:"high-performance" });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1,2));
     stage.appendChild(renderer.domElement);
 
     const world = new THREE.Group();
-    world.rotation.x = -0.18;
+    world.rotation.x = 0.46;
     world.rotation.y = -0.08;
     scene.add(world);
 
-    const RADIUS = 1;
-    const MIN_CAMERA_Z = 2.15;
-    const MAX_CAMERA_Z = 5.4;
-    const ROTATION_SPEED = 0.0062;
-
-    scene.add(new THREE.HemisphereLight(0xcfe2e7, 0x071018, 1.65));
-    const key = new THREE.DirectionalLight(0xffffff, 1.65);
-    key.position.set(-2.5, 3.2, 4.6);
+    scene.add(new THREE.HemisphereLight(0xd8e8e9,0x061019,1.55));
+    const key = new THREE.DirectionalLight(0xffffff,1.55);
+    key.position.set(-2.8,3.5,4.8);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x5d9fb4, 0.7);
-    rim.position.set(3.5, -1.8, -2.8);
+    const rim = new THREE.DirectionalLight(0x77b6cb,.68);
+    rim.position.set(3.6,-1.7,-3.0);
     scene.add(rim);
 
-    const texture = buildPlanetTexture();
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-    const globe = new THREE.Mesh(
-      new THREE.SphereGeometry(RADIUS, 128, 96),
-      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.96, metalness: 0.0 })
-    );
+    const oceanMaterial = new THREE.MeshStandardMaterial({ color:0x0a2939, roughness:.94, metalness:0 });
+    const globe = new THREE.Mesh(new THREE.SphereGeometry(RADIUS,160,112),oceanMaterial);
     world.add(globe);
-
     const atmosphere = new THREE.Mesh(
-      new THREE.SphereGeometry(RADIUS * 1.012, 96, 72),
-      new THREE.MeshBasicMaterial({ color: 0x7bb7c8, transparent: true, opacity: 0.055, side: THREE.BackSide })
+      new THREE.SphereGeometry(RADIUS*1.014,120,88),
+      new THREE.MeshBasicMaterial({ color:0x77b7ca, transparent:true, opacity:.055, side:THREE.BackSide })
     );
     world.add(atmosphere);
 
-    const labels = [
-      { name: "大同", lat: 74.0, lon: -10.0 },
-      { name: "中山", lat: 77.0, lon: 0.5 },
-      { name: "中正", lat: 68.0, lon: -12.5 },
-      { name: "大安", lat: 68.4, lon: -3.5 },
-      { name: "松山", lat: 69.0, lon: 6.0 },
-      { name: "信義", lat: 66.5, lon: 15.0 },
-    ].map((item) => {
-      const el = document.createElement("div");
-      el.className = "label";
-      el.textContent = item.name;
-      labelsLayer.appendChild(el);
-      return { ...item, el, local: latLonToVector3(item.lat, item.lon, RADIUS * 1.022) };
-    });
+    let labelItems = [];
+    let projectionState = null;
 
-    const tmpWorld = new THREE.Vector3();
-    const tmpProjected = new THREE.Vector3();
-    const tmpNormal = new THREE.Vector3();
-    const tmpToCamera = new THREE.Vector3();
+    const normalizeName = (value) => String(value ?? "")
+      .replace(/臺/g,"台")
+      .replace(/[鄉鎮市區]$/u,"")
+      .trim();
 
-    function latLonToVector3(latDeg, lonDeg, radius = 1) {
+    function featureTargetName(f) {
+      const vals = Object.values(f.properties || {});
+      for (const value of vals) {
+        const n = normalizeName(value);
+        if (TARGETS.includes(n)) return n;
+      }
+      return null;
+    }
+
+    function eachCoordinate(geometry, callback) {
+      if (!geometry) return;
+      const c = geometry.coordinates;
+      if (geometry.type === "Polygon") {
+        c.forEach(r => r.forEach(callback));
+      } else if (geometry.type === "MultiPolygon") {
+        c.forEach(p => p.forEach(r => r.forEach(callback)));
+      }
+    }
+
+    function centroidOfFeature(f) {
+      let sx=0, sy=0, n=0;
+      eachCoordinate(f.geometry, ([lon,lat]) => { sx += lon; sy += lat; n++; });
+      return n ? [sx/n,sy/n] : [121.54,25.04];
+    }
+
+    function isMainIslandFeature(f) {
+      const [lon,lat] = centroidOfFeature(f);
+      return lon >= MAINLAND_BOX.minLon && lon <= MAINLAND_BOX.maxLon && lat >= MAINLAND_BOX.minLat && lat <= MAINLAND_BOX.maxLat;
+    }
+
+    function buildProjection(features) {
+      const targets = features.filter(f => featureTargetName(f));
+      const targetCenters = targets.map(centroidOfFeature);
+      const fallback = [121.544,25.044];
+      const center = targetCenters.length
+        ? [targetCenters.reduce((a,p)=>a+p[0],0)/targetCenters.length, targetCenters.reduce((a,p)=>a+p[1],0)/targetCenters.length]
+        : fallback;
+      const cosLat = Math.cos(center[1] * Math.PI/180);
+      let maxR = .001;
+      for (const f of features) eachCoordinate(f.geometry, ([lon,lat]) => {
+        const dx = (lon-center[0]) * cosLat;
+        const dy = lat-center[1];
+        maxR = Math.max(maxR,Math.hypot(dx,dy));
+      });
+      return { center, cosLat, maxR };
+    }
+
+    function smoothstep(a,b,x) {
+      const t = Math.max(0,Math.min(1,(x-a)/(b-a)));
+      return t*t*(3-2*t);
+    }
+
+    function geoToPlanet(lon,lat) {
+      const { center, cosLat, maxR } = projectionState;
+      const dx = (lon-center[0]) * cosLat;
+      const dy = lat-center[1];
+      const r = Math.hypot(dx,dy);
+      const t = Math.min(1,r/maxR);
+      const colat = Math.PI * Math.pow(t,0.67);
+      const rawAzimuth = Math.atan2(dx,-dy);
+      const azimuthScale = 1 + 2.15 * smoothstep(.08,.92,t);
+      const azimuth = rawAzimuth * azimuthScale;
+      const outLat = 90 - colat * 180/Math.PI;
+      let outLon = azimuth * 180/Math.PI;
+      outLon = ((outLon + 180) % 360 + 360) % 360 - 180;
+      return [outLon,outLat];
+    }
+
+    function latLonToVector3(latDeg,lonDeg,radius=1) {
       const lat = THREE.MathUtils.degToRad(latDeg);
       const lon = THREE.MathUtils.degToRad(lonDeg);
       return new THREE.Vector3(
-        radius * Math.cos(lat) * Math.sin(lon),
-        radius * Math.sin(lat),
-        radius * Math.cos(lat) * Math.cos(lon)
+        radius*Math.cos(lat)*Math.sin(lon),
+        radius*Math.sin(lat),
+        radius*Math.cos(lat)*Math.cos(lon)
       );
     }
 
-    function buildPlanetTexture() {
-      const canvas = document.createElement("canvas");
-      canvas.width = 2048;
-      canvas.height = 1024;
-      const ctx = canvas.getContext("2d", { alpha: false });
-      const w = canvas.width;
-      const h = canvas.height;
-      // Three.js SphereGeometry puts the camera-facing +Z meridian at texture U=0.25.
-      const x = (lon) => ((lon + 90) / 360) * w;
-      const y = (lat) => ((90 - lat) / 180) * h;
+    function unwrapRing(projectedRing, anchor=null) {
+      if (!projectedRing.length) return [];
+      const out=[];
+      let firstLon=projectedRing[0][0];
+      if (anchor !== null) firstLon += 360*Math.round((anchor-firstLon)/360);
+      out.push([firstLon,projectedRing[0][1]]);
+      for (let i=1;i<projectedRing.length;i++) {
+        let lon=projectedRing[i][0];
+        const prev=out[i-1][0];
+        while (lon-prev>180) lon-=360;
+        while (lon-prev<-180) lon+=360;
+        out.push([lon,projectedRing[i][1]]);
+      }
+      return out;
+    }
 
-      const ocean = ctx.createLinearGradient(0, 0, 0, h);
-      ocean.addColorStop(0, "#123447");
-      ocean.addColorStop(0.48, "#0a2839");
-      ocean.addColorStop(1, "#061a27");
-      ctx.fillStyle = ocean;
-      ctx.fillRect(0, 0, w, h);
+    function drawProjectedPolygon(ctx, polygon, fillStyle, strokeStyle, lineWidth) {
+      if (!polygon?.length) return;
+      const projected = polygon.map(r => r.map(([lon,lat]) => geoToPlanet(lon,lat)));
+      const outer = unwrapRing(projected[0]);
+      const anchor = outer.reduce((a,p)=>a+p[0],0)/Math.max(1,outer.length);
+      const rings = [outer,...projected.slice(1).map(r => unwrapRing(r,anchor))];
+      for (const shift of [-360,0,360]) {
+        ctx.beginPath();
+        for (const ring of rings) {
+          if (!ring.length) continue;
+          ring.forEach(([lon,lat],i) => {
+            const px = ((lon+shift+90)/360)*TEXTURE_W;
+            const py = ((90-lat)/180)*TEXTURE_H;
+            if (i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+          });
+          ctx.closePath();
+        }
+        ctx.fillStyle = fillStyle;
+        ctx.fill("evenodd");
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+      }
+    }
 
-      ctx.save();
-      ctx.globalAlpha = 0.09;
-      ctx.strokeStyle = "#b7d6df";
-      ctx.lineWidth = 1;
-      for (let lat = -60; lat <= 60; lat += 20) {
-        ctx.beginPath(); ctx.moveTo(0, y(lat)); ctx.lineTo(w, y(lat)); ctx.stroke();
+    function drawFeature(ctx,f) {
+      const target = featureTargetName(f);
+      const fill = target ? "#b9c99b" : "#819d75";
+      const stroke = target ? "rgba(251,250,231,.88)" : "rgba(230,240,219,.38)";
+      const width = target ? 2.1 : 1.0;
+      const g=f.geometry;
+      if (g.type === "Polygon") drawProjectedPolygon(ctx,g.coordinates,fill,stroke,width);
+      else if (g.type === "MultiPolygon") g.coordinates.forEach(p => drawProjectedPolygon(ctx,p,fill,stroke,width));
+    }
+
+    function buildTexture(features) {
+      const canvas=document.createElement("canvas");
+      canvas.width=TEXTURE_W; canvas.height=TEXTURE_H;
+      const ctx=canvas.getContext("2d",{alpha:false});
+      const sea=ctx.createLinearGradient(0,0,0,TEXTURE_H);
+      sea.addColorStop(0,"#12394b"); sea.addColorStop(.5,"#0a2939"); sea.addColorStop(1,"#061a27");
+      ctx.fillStyle=sea; ctx.fillRect(0,0,TEXTURE_W,TEXTURE_H);
+
+      ctx.save(); ctx.globalAlpha=.07; ctx.strokeStyle="#d0e5e7"; ctx.lineWidth=1;
+      for (let lat=-60;lat<=60;lat+=20) {
+        const py=((90-lat)/180)*TEXTURE_H;
+        ctx.beginPath(); ctx.moveTo(0,py); ctx.lineTo(TEXTURE_W,py); ctx.stroke();
       }
       ctx.restore();
 
-      const coast = [
-        [0,82],[8,77],[15,70],[20,58],[22,42],[24,23],[22,3],[18,-17],[12,-38],[5,-59],[-1,-78],
-        [-9,-61],[-15,-42],[-19,-20],[-22,3],[-24,26],[-22,45],[-18,61],[-12,73],[-6,80],
-      ];
-
-      ctx.save();
-      ctx.beginPath();
-      coast.forEach(([lon,lat], i) => { const px=x(lon), py=y(lat); i ? ctx.lineTo(px,py) : ctx.moveTo(px,py); });
-      ctx.closePath();
-      const landGradient = ctx.createLinearGradient(0, y(85), 0, y(-80));
-      landGradient.addColorStop(0, "#adc49b");
-      landGradient.addColorStop(0.36, "#8faa7d");
-      landGradient.addColorStop(1, "#6f8e69");
-      ctx.fillStyle = landGradient;
-      ctx.fill();
-      ctx.strokeStyle = "rgba(236,244,225,.72)";
-      ctx.lineWidth = 2.2;
-      ctx.stroke();
-      ctx.clip();
-
-      ctx.strokeStyle = "rgba(233,243,224,.30)";
-      ctx.lineWidth = 1.35;
-      ctx.setLineDash([7,6]);
-      [55,28,0,-30].forEach((lat) => {
-        ctx.beginPath(); ctx.moveTo(x(-23),y(lat));
-        ctx.bezierCurveTo(x(-8),y(lat+3),x(8),y(lat-3),x(23),y(lat)); ctx.stroke();
-      });
-      ctx.setLineDash([]);
-
-      const crownLines = [
-        [[-5,82],[-5,71]], [[5,80],[4,70]], [[-16,72],[16,72]],
-        [[-11,64],[-10,72]], [[-2,64],[-1,72]], [[7,64],[8,72]],
-      ];
-      ctx.strokeStyle = "rgba(250,250,238,.58)";
-      ctx.lineWidth = 1.7;
-      crownLines.forEach((segment) => {
-        ctx.beginPath(); ctx.moveTo(x(segment[0][0]),y(segment[0][1]));
-        ctx.lineTo(x(segment[1][0]),y(segment[1][1])); ctx.stroke();
-      });
-
-      ctx.strokeStyle = "rgba(69,95,65,.44)";
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.moveTo(x(1),y(62));
-      ctx.bezierCurveTo(x(6),y(37),x(2),y(8),x(0),y(-17));
-      ctx.bezierCurveTo(x(-1),y(-35),x(3),y(-48),x(0),y(-62));
-      ctx.stroke();
-      ctx.restore();
-
-      return new THREE.CanvasTexture(canvas);
+      features.forEach(f => drawFeature(ctx,f));
+      const texture=new THREE.CanvasTexture(canvas);
+      texture.colorSpace=THREE.SRGBColorSpace;
+      texture.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+      return texture;
     }
 
-    const pointers = new Map();
-    let lastSingle = null;
-    let pinchStartDistance = 0;
-    let pinchStartCameraZ = camera.position.z;
-    const distance = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
-    const markInteraction = () => document.body.classList.add("interacted");
+    function buildLabels(features) {
+      labelsLayer.replaceChildren();
+      labelItems=[];
+      for (const name of TARGETS) {
+        const f=features.find(feat => featureTargetName(feat)===name);
+        if (!f) continue;
+        const [lon,lat]=centroidOfFeature(f);
+        const [pLon,pLat]=geoToPlanet(lon,lat);
+        const el=document.createElement("div");
+        el.className="label"; el.textContent=name;
+        labelsLayer.appendChild(el);
+        labelItems.push({ name,el,local:latLonToVector3(pLat,pLon,RADIUS*1.024) });
+      }
+    }
+
+    async function loadTaiwan() {
+      try {
+        const res=await fetch(DATA_URL,{cache:"force-cache"});
+        if (!res.ok) throw new Error(`TopoJSON ${res.status}`);
+        const topology=await res.json();
+        const object=topology.objects.towns || Object.values(topology.objects)[0];
+        const collection=topoFeature(topology,object);
+        const features=collection.features.filter(isMainIslandFeature);
+        if (!features.length) throw new Error("找不到台灣本島行政區");
+        projectionState=buildProjection(features);
+        const texture=buildTexture(features);
+        oceanMaterial.map=texture;
+        oceanMaterial.needsUpdate=true;
+        buildLabels(features);
+        document.body.classList.add("ready");
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent="台灣圖資載入失敗";
+      }
+    }
+
+    const pointers=new Map();
+    let lastSingle=null, pinchStartDistance=0, pinchStartCameraZ=camera.position.z;
+    const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+    const markInteraction=()=>document.body.classList.add("interacted");
 
     function onPointerDown(event) {
-      event.preventDefault();
-      markInteraction();
+      event.preventDefault(); markInteraction();
       renderer.domElement.setPointerCapture?.(event.pointerId);
-      pointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+      pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
       document.body.classList.add("dragging");
-      if (pointers.size === 1) {
-        lastSingle = { x:event.clientX, y:event.clientY };
-      } else if (pointers.size === 2) {
-        const [a,b] = [...pointers.values()];
-        pinchStartDistance = Math.max(1, distance(a,b));
-        pinchStartCameraZ = camera.position.z;
-        lastSingle = null;
+      if (pointers.size===1) lastSingle={x:event.clientX,y:event.clientY};
+      else if (pointers.size===2) {
+        const [a,b]=[...pointers.values()];
+        pinchStartDistance=Math.max(1,distance(a,b));
+        pinchStartCameraZ=camera.position.z;
+        lastSingle=null;
       }
     }
-
     function onPointerMove(event) {
       if (!pointers.has(event.pointerId)) return;
       event.preventDefault();
-      pointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
-      if (pointers.size === 1) {
-        const point = [...pointers.values()][0];
+      pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      if (pointers.size===1) {
+        const p=[...pointers.values()][0];
         if (lastSingle) {
-          const dx = point.x-lastSingle.x;
-          const dy = point.y-lastSingle.y;
-          world.rotation.y += dx * ROTATION_SPEED;
-          world.rotation.x += dy * ROTATION_SPEED;
-          world.rotation.x = THREE.MathUtils.clamp(world.rotation.x, -1.28, 1.28);
+          world.rotation.y += (p.x-lastSingle.x)*ROTATION_SPEED;
+          world.rotation.x += (p.y-lastSingle.y)*ROTATION_SPEED;
+          world.rotation.x=THREE.MathUtils.clamp(world.rotation.x,-1.36,1.36);
         }
-        lastSingle = { ...point };
-      } else if (pointers.size === 2) {
-        const [a,b] = [...pointers.values()];
-        const current = Math.max(1, distance(a,b));
-        camera.position.z = THREE.MathUtils.clamp(pinchStartCameraZ * (pinchStartDistance/current), MIN_CAMERA_Z, MAX_CAMERA_Z);
+        lastSingle={...p};
+      } else if (pointers.size===2) {
+        const [a,b]=[...pointers.values()];
+        const current=Math.max(1,distance(a,b));
+        camera.position.z=THREE.MathUtils.clamp(pinchStartCameraZ*(pinchStartDistance/current),MIN_CAMERA_Z,MAX_CAMERA_Z);
       }
     }
-
     function onPointerUp(event) {
-      event.preventDefault();
-      pointers.delete(event.pointerId);
-      if (pointers.size === 0) {
-        lastSingle = null;
-        document.body.classList.remove("dragging");
-      } else if (pointers.size === 1) {
-        const point = [...pointers.values()][0];
-        lastSingle = { ...point };
-      }
+      event.preventDefault(); pointers.delete(event.pointerId);
+      if (!pointers.size) { lastSingle=null; document.body.classList.remove("dragging"); }
+      else if (pointers.size===1) lastSingle={...[...pointers.values()][0]};
     }
-
-    ["pointerdown","pointermove","pointerup","pointercancel"].forEach((type) => {
-      renderer.domElement.addEventListener(type, type === "pointerdown" ? onPointerDown : type === "pointermove" ? onPointerMove : onPointerUp, { passive:false });
+    ["pointerdown","pointermove","pointerup","pointercancel"].forEach(type => {
+      renderer.domElement.addEventListener(type,type==="pointerdown"?onPointerDown:type==="pointermove"?onPointerMove:onPointerUp,{passive:false});
     });
 
-    const block = (event) => event.preventDefault();
-    ["gesturestart","gesturechange","gestureend","contextmenu","dragstart","selectstart"].forEach((type) => {
-      document.addEventListener(type, block, { passive:false });
-    });
-    document.addEventListener("touchmove", (event) => { if (event.touches.length > 1) event.preventDefault(); }, { passive:false });
-    let lastTouchEnd = 0;
-    document.addEventListener("touchend", (event) => {
-      const now = Date.now();
-      if (now-lastTouchEnd <= 300) event.preventDefault();
-      lastTouchEnd = now;
-    }, { passive:false });
+    const block=e=>e.preventDefault();
+    ["gesturestart","gesturechange","gestureend","contextmenu","dragstart","selectstart"].forEach(type=>document.addEventListener(type,block,{passive:false}));
+    document.addEventListener("touchmove",e=>{ if (e.touches.length>1) e.preventDefault(); },{passive:false});
+    let lastTouchEnd=0;
+    document.addEventListener("touchend",e=>{ const now=Date.now(); if (now-lastTouchEnd<=300) e.preventDefault(); lastTouchEnd=now; },{passive:false});
 
     function resize() {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      camera.aspect = width / Math.max(1,height);
-      camera.updateProjectionMatrix();
-      renderer.setSize(width,height,false);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      const width=window.innerWidth, height=window.innerHeight;
+      camera.aspect=width/Math.max(1,height); camera.updateProjectionMatrix();
+      renderer.setSize(width,height,false); renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     }
-    window.addEventListener("resize", resize, { passive:true });
-    window.visualViewport?.addEventListener("resize", resize, { passive:true });
+    window.addEventListener("resize",resize,{passive:true});
+    window.visualViewport?.addEventListener("resize",resize,{passive:true});
     resize();
 
+    const tmpWorld=new THREE.Vector3(), tmpProjected=new THREE.Vector3(), tmpNormal=new THREE.Vector3(), tmpToCamera=new THREE.Vector3();
     function updateLabels() {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
+      const width=window.innerWidth,height=window.innerHeight;
       world.updateMatrixWorld(true);
-      labels.forEach((label) => {
+      for (const label of labelItems) {
         tmpWorld.copy(label.local).applyMatrix4(world.matrixWorld);
-        tmpNormal.copy(tmpWorld).normalize();
-        tmpToCamera.copy(camera.position).sub(tmpWorld).normalize();
-        const facing = tmpNormal.dot(tmpToCamera);
-        if (facing <= 0.04) { label.el.style.opacity = "0"; return; }
+        tmpNormal.copy(tmpWorld).normalize(); tmpToCamera.copy(camera.position).sub(tmpWorld).normalize();
+        const facing=tmpNormal.dot(tmpToCamera);
+        if (facing<=.035) { label.el.style.opacity="0"; continue; }
         tmpProjected.copy(tmpWorld).project(camera);
-        const sx = (tmpProjected.x * .5 + .5) * width;
-        const sy = (-tmpProjected.y * .5 + .5) * height;
-        if (tmpProjected.z < -1 || tmpProjected.z > 1 || sx < -80 || sx > width+80 || sy < -50 || sy > height+50) {
-          label.el.style.opacity = "0"; return;
-        }
-        label.el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -50%)`;
-        label.el.style.opacity = String(THREE.MathUtils.clamp((facing-.04)*2.8,0,1));
-      });
+        const sx=(tmpProjected.x*.5+.5)*width, sy=(-tmpProjected.y*.5+.5)*height;
+        if (tmpProjected.z < -1 || tmpProjected.z > 1 || sx < -80 || sx > width+80 || sy < -50 || sy > height+50) { label.el.style.opacity="0"; continue; }
+        label.el.style.transform=`translate3d(${sx}px,${sy}px,0) translate(-50%,-50%)`;
+        label.el.style.opacity=String(THREE.MathUtils.clamp((facing-.035)*2.9,0,1));
+      }
     }
-
-    function animate() {
-      updateLabels();
-      renderer.render(scene,camera);
-      requestAnimationFrame(animate);
-    }
+    function animate() { updateLabels(); renderer.render(scene,camera); requestAnimationFrame(animate); }
     animate();
+    loadTaiwan();
   </script>
 </body>
 </html>
