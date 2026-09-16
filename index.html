@@ -147,7 +147,8 @@
       const ctx = canvas.getContext("2d", { alpha: false });
       const w = canvas.width;
       const h = canvas.height;
-      const x = (lon) => ((lon + 180) / 360) * w;
+      // Three.js SphereGeometry puts the camera-facing +Z meridian at texture U=0.25.
+      const x = (lon) => ((lon + 90) / 360) * w;
       const y = (lat) => ((90 - lat) / 180) * h;
 
       const ocean = ctx.createLinearGradient(0, 0, 0, h);
