@@ -8,7 +8,9 @@ const OFFSHORE_TOWNS = new Set(["綠島鄉", "兰嶼鄉", "蘭嶼鄉", "琉球�
 
 const RADIUS = 1;
 const EARTH_RADIUS_KM = 6371.0088;
-const TARGET_MAX_COLAT_DEG = 138;
+const MAX_LOCAL_STRETCH_RATIO = 1.25;
+const TARGET_MAX_COLAT = 2 * Math.acos(1 / Math.sqrt(MAX_LOCAL_STRETCH_RATIO));
+const TARGET_MAX_COLAT_DEG = THREE.MathUtils.radToDeg(TARGET_MAX_COLAT);
 const MIN_CAMERA_Z = 2.05;
 const MAX_CAMERA_Z = 5.45;
 const ROTATION_SPEED = 0.0062;
@@ -19,7 +21,7 @@ const statusEl = document.querySelector("#status");
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-camera.position.set(0, 0, 3.35);
+camera.position.set(0, 0, 3.05);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -27,8 +29,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 stage.appendChild(renderer.domElement);
 
 const world = new THREE.Group();
-world.rotation.x = 0.48;
-world.rotation.y = -0.06;
+world.rotation.x = 0.33;
+world.rotation.y = -0.04;
 scene.add(world);
 
 scene.add(new THREE.HemisphereLight(0xe7f5f7, 0x082438, 1.6));
@@ -136,36 +138,31 @@ function earthPolarFrom(center, lonDeg, latDeg) {
   const lon2 = THREE.MathUtils.degToRad(lonDeg);
   const lat2 = THREE.MathUtils.degToRad(latDeg);
   const dLon = lon2 - lon1;
-
   const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1);
   const sinLat2 = Math.sin(lat2), cosLat2 = Math.cos(lat2);
   const cosAngle = THREE.MathUtils.clamp(sinLat1 * sinLat2 + cosLat1 * cosLat2 * Math.cos(dLon), -1, 1);
   const angle = Math.acos(cosAngle);
-  const bearing = Math.atan2(
-    Math.sin(dLon) * cosLat2,
-    cosLat1 * sinLat2 - sinLat1 * cosLat2 * Math.cos(dLon)
-  );
+  const bearing = Math.atan2(Math.sin(dLon) * cosLat2, cosLat1 * sinLat2 - sinLat1 * cosLat2 * Math.cos(dLon));
   return { angle, bearing };
 }
 
 function buildProjection(features) {
   const targetCenters = features.filter(f => featureTargetName(f)).map(centroidOfFeature);
   const center = targetCenters.length ? sphericalMean(targetCenters) : [121.544, 25.044];
-
   let maxEarthAngle = 1e-9;
-  for (const f of features) {
-    eachCoordinate(f.geometry, ([lon, lat]) => {
-      const { angle } = earthPolarFrom(center, lon, lat);
-      maxEarthAngle = Math.max(maxEarthAngle, angle);
-    });
-  }
-
-  const maxEarthDistanceKm = EARTH_RADIUS_KM * maxEarthAngle;
-  const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
+  for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
+    maxEarthAngle = Math.max(maxEarthAngle, earthPolarFrom(center, lon, lat).angle);
+  });
   const sourceRhoMax = 2 * Math.sin(maxEarthAngle / 2);
-  const targetRhoMax = 2 * Math.sin(targetMaxColat / 2);
-
-  return { center, maxEarthAngle, maxEarthDistanceKm, sourceRhoMax, targetRhoMax, targetMaxColat };
+  const targetRhoMax = 2 * Math.sin(TARGET_MAX_COLAT / 2);
+  return {
+    center,
+    maxEarthAngle,
+    maxEarthDistanceKm: EARTH_RADIUS_KM * maxEarthAngle,
+    sourceRhoMax,
+    targetRhoMax,
+    targetMaxColat: TARGET_MAX_COLAT
+  };
 }
 
 function sourceLocalXY(lon, lat) {
@@ -176,13 +173,10 @@ function sourceLocalXY(lon, lat) {
 
 function geoToPlanet(lon, lat) {
   const { angle, bearing } = earthPolarFrom(projectionState.center, lon, lat);
-  const { sourceRhoMax, targetRhoMax } = projectionState;
-
   const sourceRho = 2 * Math.sin(angle / 2);
-  const normalizedRho = sourceRho / Math.max(sourceRhoMax, 1e-12);
-  const targetSinHalf = THREE.MathUtils.clamp((targetRhoMax * normalizedRho) / 2, 0, 1);
+  const normalizedRho = sourceRho / Math.max(projectionState.sourceRhoMax, 1e-12);
+  const targetSinHalf = THREE.MathUtils.clamp((projectionState.targetRhoMax * normalizedRho) / 2, 0, 1);
   const colat = 2 * Math.asin(targetSinHalf);
-
   return [THREE.MathUtils.radToDeg(bearing), 90 - THREE.MathUtils.radToDeg(colat)];
 }
 
@@ -211,13 +205,11 @@ function addPolygonGeometry(bucket, polygon, borderPositions) {
   const outer = cleanRing(polygon[0]);
   if (outer.length < 3) return;
   const holes = polygon.slice(1).map(cleanRing).filter(r => r.length >= 3);
-
   const contour2D = outer.map(([lon, lat]) => sourceLocalXY(lon, lat));
   const holes2D = holes.map(r => r.map(([lon, lat]) => sourceLocalXY(lon, lat)));
   const faces = THREE.ShapeUtils.triangulateShape(contour2D, holes2D);
   const all = outer.concat(...holes);
   const base = bucket.positions.length / 3;
-
   for (const [lon, lat] of all) {
     const [pLon, pLat] = geoToPlanet(lon, lat);
     const v = latLonToVector3(pLat, pLon, RADIUS * 1.009);
@@ -226,7 +218,6 @@ function addPolygonGeometry(bucket, polygon, borderPositions) {
     bucket.normals.push(n.x, n.y, n.z);
   }
   for (const tri of faces) bucket.indices.push(base + tri[0], base + tri[1], base + tri[2]);
-
   for (const ring of [outer, ...holes]) {
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i], b = ring[(i + 1) % ring.length];
@@ -253,14 +244,12 @@ function buildLandGeometry(features) {
   const colors = [0x92aa78, 0x9eae7f, 0x899f70, 0xa5b689, 0xd0d6a7];
   const buckets = colors.map(() => ({ positions: [], normals: [], indices: [] }));
   const borderPositions = [];
-
   features.forEach((f, index) => {
     const bucket = buckets[featureTargetName(f) ? 4 : index % 4];
     const g = f.geometry;
     if (g.type === "Polygon") addPolygonGeometry(bucket, g.coordinates, borderPositions);
     else if (g.type === "MultiPolygon") g.coordinates.forEach(p => addPolygonGeometry(bucket, p, borderPositions));
   });
-
   buckets.forEach((bucket, i) => {
     if (!bucket.indices.length) return;
     const geometry = new THREE.BufferGeometry();
@@ -274,7 +263,6 @@ function buildLandGeometry(features) {
     });
     landGroup.add(new THREE.Mesh(geometry, material));
   });
-
   const borderGeometry = new THREE.BufferGeometry();
   borderGeometry.setAttribute("position", new THREE.Float32BufferAttribute(borderPositions, 3));
   const borderMaterial = new THREE.LineBasicMaterial({ color: 0xf4f7df, transparent: true, opacity: 0.48 });
@@ -307,14 +295,10 @@ async function loadTaiwan() {
     const collection = topoFeature(topology, object);
     const features = collection.features.map(sanitizeFeature).filter(Boolean);
     if (!features.length) throw new Error("找不到台灣本島行政區");
-
     projectionState = buildProjection(features);
-    oceanMaterial.map = null;
-    oceanMaterial.color.setHex(0x237fb8);
-    oceanMaterial.needsUpdate = true;
     buildLandGeometry(features);
     buildLabels(features);
-    statusEl.textContent = `本島行政區 ${features.length} 個・等面積投影`;
+    statusEl.textContent = `本島行政區 ${features.length} 個・等面積・最遠端 ${TARGET_MAX_COLAT_DEG.toFixed(1)}°`;
     document.body.classList.add("ready");
   } catch (err) {
     console.error(err);
@@ -351,19 +335,15 @@ function onPointerMove(event) {
   if (pointers.size === 1) {
     const point = [...pointers.values()][0];
     if (lastSingle) {
-      const dx = point.x - lastSingle.x;
-      const dy = point.y - lastSingle.y;
-      world.rotation.y += dx * ROTATION_SPEED;
-      world.rotation.x += dy * ROTATION_SPEED;
+      world.rotation.y += (point.x - lastSingle.x) * ROTATION_SPEED;
+      world.rotation.x += (point.y - lastSingle.y) * ROTATION_SPEED;
       world.rotation.x = THREE.MathUtils.clamp(world.rotation.x, -1.48, 1.48);
     }
     lastSingle = { ...point };
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const current = Math.max(1, distance(a, b));
-    camera.position.z = THREE.MathUtils.clamp(
-      pinchStartCameraZ * (pinchStartDistance / current), MIN_CAMERA_Z, MAX_CAMERA_Z
-    );
+    camera.position.z = THREE.MathUtils.clamp(pinchStartCameraZ * (pinchStartDistance / current), MIN_CAMERA_Z, MAX_CAMERA_Z);
   }
 }
 
@@ -377,13 +357,8 @@ function onPointerUp(event) {
 }
 
 ["pointerdown", "pointermove", "pointerup", "pointercancel"].forEach(type => {
-  renderer.domElement.addEventListener(
-    type,
-    type === "pointerdown" ? onPointerDown : type === "pointermove" ? onPointerMove : onPointerUp,
-    { passive: false }
-  );
+  renderer.domElement.addEventListener(type, type === "pointerdown" ? onPointerDown : type === "pointermove" ? onPointerMove : onPointerUp, { passive: false });
 });
-
 const block = event => event.preventDefault();
 ["gesturestart", "gesturechange", "gestureend", "contextmenu", "dragstart", "selectstart"].forEach(type => {
   document.addEventListener(type, block, { passive: false });
@@ -423,7 +398,6 @@ function updateLabels() {
   const cellH = zoom < 2.55 ? 24 : 28;
   const occupied = new Set();
   const candidates = [];
-
   world.updateMatrixWorld(true);
   for (const item of labelItems) {
     tmpWorld.copy(item.local).applyMatrix4(world.matrixWorld);
@@ -440,19 +414,18 @@ function updateLabels() {
     }
     candidates.push({ item, facing, sx, sy });
   }
-
   candidates.sort((a, b) => Number(b.item.pole) - Number(a.item.pole) || b.facing - a.facing);
   let shown = 0;
   for (const c of candidates) {
     const { item, sx, sy, facing } = c;
     const gx = Math.floor(sx / cellW);
     const gy = Math.floor(sy / cellH);
-    const key = `${gx}:${gy}`;
-    if (!item.pole && (shown >= limit || occupied.has(key))) {
+    const cellKey = `${gx}:${gy}`;
+    if (!item.pole && (shown >= limit || occupied.has(cellKey))) {
       item.el.style.opacity = "0";
       continue;
     }
-    occupied.add(key);
+    occupied.add(cellKey);
     shown++;
     item.el.style.transform = `translate3d(${sx}px,${sy}px,0) translate(-50%,-50%)`;
     item.el.style.opacity = String(THREE.MathUtils.clamp((facing - 0.035) * 3.2, 0, 1));
