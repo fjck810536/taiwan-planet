@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <meta name="theme-color" content="#07111a" />
+  <title>Taiwan Planet</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05090e;
+      --ocean: #0a2332;
+      --land: #7f9d79;
+      --land-hi: #a5bc8d;
+      --line: rgba(223, 237, 215, 0.32);
+      --label: #f3f3ea;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      width: 100%; height: 100%; margin: 0; overflow: hidden;
+      overscroll-behavior: none; background: var(--bg); touch-action: none;
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    }
+    body {
+      position: fixed; inset: 0;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans TC", "PingFang TC", sans-serif;
+    }
+    #app, #stage, canvas, #labels {
+      position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none;
+    }
+    #app {
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 42%, rgba(34, 63, 76, 0.18), transparent 36%), linear-gradient(180deg, #08131c 0%, #04070b 100%);
+    }
+    canvas { display: block; cursor: grab; }
+    body.dragging canvas { cursor: grabbing; }
+    #labels { z-index: 3; pointer-events: none; }
+    .label {
+      position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transform-origin: center;
+      white-space: nowrap; font-size: clamp(12px, 3.4vw, 18px); line-height: 1; font-weight: 650;
+      letter-spacing: 0.08em; color: var(--label);
+      text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 10px rgba(0,0,0,.7);
+      opacity: 0; transition: opacity 90ms linear; will-change: transform, opacity;
+    }
+    .label::before {
+      content: ""; position: absolute; left: 50%; top: calc(100% + 5px); width: 4px; height: 4px;
+      border-radius: 50%; transform: translateX(-50%); background: currentColor;
+      box-shadow: 0 0 0 2px rgba(7,17,26,.6); opacity: .72;
+    }
+    #hint {
+      position: absolute; z-index: 4; left: 50%; bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px));
+      transform: translateX(-50%); pointer-events: none; color: rgba(238,242,238,.66); font-size: 11px;
+      letter-spacing: .08em; text-align: center; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,.7);
+      transition: opacity 400ms ease;
+    }
+    body.interacted #hint { opacity: 0; }
+  </style>
+</head>
+<body>
+  <main id="app" aria-label="Taiwan Planet interactive globe">
+    <div id="stage"></div>
+    <div id="labels" aria-hidden="true"></div>
+    <div id="hint">單指旋轉・雙指縮放</div>
+  </main>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
+
+    const stage = document.querySelector("#stage");
+    const labelsLayer = document.querySelector("#labels");
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    camera.position.set(0, 0, 3.4);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    stage.appendChild(renderer.domElement);
+
+    const world = new THREE.Group();
+    world.rotation.x = -0.18;
+    world.rotation.y = -0.08;
+    scene.add(world);
+
+    const RADIUS = 1;
+    const MIN_CAMERA_Z = 2.15;
+    const MAX_CAMERA_Z = 5.4;
+    const ROTATION_SPEED = 0.0062;
+
+    scene.add(new THREE.HemisphereLight(0xcfe2e7, 0x071018, 1.65));
+    const key = new THREE.DirectionalLight(0xffffff, 1.65);
+    key.position.set(-2.5, 3.2, 4.6);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x5d9fb4, 0.7);
+    rim.position.set(3.5, -1.8, -2.8);
+    scene.add(rim);
+
+    const texture = buildPlanetTexture();
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const globe = new THREE.Mesh(
+      new THREE.SphereGeometry(RADIUS, 128, 96),
+      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.96, metalness: 0.0 })
+    );
+    world.add(globe);
+
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(RADIUS * 1.012, 96, 72),
+      new THREE.MeshBasicMaterial({ color: 0x7bb7c8, transparent: true, opacity: 0.055, side: THREE.BackSide })
+    );
+    world.add(atmosphere);
+
+    const labels = [
+      { name: "大同", lat: 74.0, lon: -10.0 },
+      { name: "中山", lat: 77.0, lon: 0.5 },
+      { name: "中正", lat: 68.0, lon: -12.5 },
+      { name: "大安", lat: 68.4, lon: -3.5 },
+      { name: "松山", lat: 69.0, lon: 6.0 },
+      { name: "信義", lat: 66.5, lon: 15.0 },
+    ].map((item) => {
+      const el = document.createElement("div");
+      el.className = "label";
+      el.textContent = item.name;
+      labelsLayer.appendChild(el);
+      return { ...item, el, local: latLonToVector3(item.lat, item.lon, RADIUS * 1.022) };
+    });
+
+    const tmpWorld = new THREE.Vector3();
+    const tmpProjected = new THREE.Vector3();
+    const tmpNormal = new THREE.Vector3();
+    const tmpToCamera = new THREE.Vector3();
+
+    function latLonToVector3(latDeg, lonDeg, radius = 1) {
+      const lat = THREE.MathUtils.degToRad(latDeg);
+      const lon = THREE.MathUtils.degToRad(lonDeg);
+      return new THREE.Vector3(
+        radius * Math.cos(lat) * Math.sin(lon),
+        radius * Math.sin(lat),
+        radius * Math.cos(lat) * Math.cos(lon)
+      );
+    }
+
+    function buildPlanetTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2048;
+      canvas.height = 1024;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      const w = canvas.width;
+      const h = canvas.height;
+      const x = (lon) => ((lon + 180) / 360) * w;
+      const y = (lat) => ((90 - lat) / 180) * h;
+
+      const ocean = ctx.createLinearGradient(0, 0, 0, h);
+      ocean.addColorStop(0, "#123447");
+      ocean.addColorStop(0.48, "#0a2839");
+      ocean.addColorStop(1, "#061a27");
+      ctx.fillStyle = ocean;
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.save();
+      ctx.globalAlpha = 0.09;
+      ctx.strokeStyle = "#b7d6df";
+      ctx.lineWidth = 1;
+      for (let lat = -60; lat <= 60; lat += 20) {
+        ctx.beginPath(); ctx.moveTo(0, y(lat)); ctx.lineTo(w, y(lat)); ctx.stroke();
+      }
+      ctx.restore();
+
+      const coast = [
+        [0,82],[8,77],[15,70],[20,58],[22,42],[24,23],[22,3],[18,-17],[12,-38],[5,-59],[-1,-78],
+        [-9,-61],[-15,-42],[-19,-20],[-22,3],[-24,26],[-22,45],[-18,61],[-12,73],[-6,80],
+      ];
+
+      ctx.save();
+      ctx.beginPath();
+      coast.forEach(([lon,lat], i) => { const px=x(lon), py=y(lat); i ? ctx.lineTo(px,py) : ctx.moveTo(px,py); });
+      ctx.closePath();
+      const landGradient = ctx.createLinearGradient(0, y(85), 0, y(-80));
+      landGradient.addColorStop(0, "#adc49b");
+      landGradient.addColorStop(0.36, "#8faa7d");
+      landGradient.addColorStop(1, "#6f8e69");
+      ctx.fillStyle = landGradient;
+      ctx.fill();
+      ctx.strokeStyle = "rgba(236,244,225,.72)";
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.clip();
+
+      ctx.strokeStyle = "rgba(233,243,224,.30)";
+      ctx.lineWidth = 1.35;
+      ctx.setLineDash([7,6]);
+      [55,28,0,-30].forEach((lat) => {
+        ctx.beginPath(); ctx.moveTo(x(-23),y(lat));
+        ctx.bezierCurveTo(x(-8),y(lat+3),x(8),y(lat-3),x(23),y(lat)); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+
+      const crownLines = [
+        [[-5,82],[-5,71]], [[5,80],[4,70]], [[-16,72],[16,72]],
+        [[-11,64],[-10,72]], [[-2,64],[-1,72]], [[7,64],[8,72]],
+      ];
+      ctx.strokeStyle = "rgba(250,250,238,.58)";
+      ctx.lineWidth = 1.7;
+      crownLines.forEach((segment) => {
+        ctx.beginPath(); ctx.moveTo(x(segment[0][0]),y(segment[0][1]));
+        ctx.lineTo(x(segment[1][0]),y(segment[1][1])); ctx.stroke();
+      });
+
+      ctx.strokeStyle = "rgba(69,95,65,.44)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(x(1),y(62));
+      ctx.bezierCurveTo(x(6),y(37),x(2),y(8),x(0),y(-17));
+      ctx.bezierCurveTo(x(-1),y(-35),x(3),y(-48),x(0),y(-62));
+      ctx.stroke();
+      ctx.restore();
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    const pointers = new Map();
+    let lastSingle = null;
+    let pinchStartDistance = 0;
+    let pinchStartCameraZ = camera.position.z;
+    const distance = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+    const markInteraction = () => document.body.classList.add("interacted");
+
+    function onPointerDown(event) {
+      event.preventDefault();
+      markInteraction();
+      renderer.domElement.setPointerCapture?.(event.pointerId);
+      pointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+      document.body.classList.add("dragging");
+      if (pointers.size === 1) {
+        lastSingle = { x:event.clientX, y:event.clientY };
+      } else if (pointers.size === 2) {
+        const [a,b] = [...pointers.values()];
+        pinchStartDistance = Math.max(1, distance(a,b));
+        pinchStartCameraZ = camera.position.z;
+        lastSingle = null;
+      }
+    }
+
+    function onPointerMove(event) {
+      if (!pointers.has(event.pointerId)) return;
+      event.preventDefault();
+      pointers.set(event.pointerId, { x:event.clientX, y:event.clientY });
+      if (pointers.size === 1) {
+        const point = [...pointers.values()][0];
+        if (lastSingle) {
+          const dx = point.x-lastSingle.x;
+          const dy = point.y-lastSingle.y;
+          world.rotation.y += dx * ROTATION_SPEED;
+          world.rotation.x += dy * ROTATION_SPEED;
+          world.rotation.x = THREE.MathUtils.clamp(world.rotation.x, -1.28, 1.28);
+        }
+        lastSingle = { ...point };
+      } else if (pointers.size === 2) {
+        const [a,b] = [...pointers.values()];
+        const current = Math.max(1, distance(a,b));
+        camera.position.z = THREE.MathUtils.clamp(pinchStartCameraZ * (pinchStartDistance/current), MIN_CAMERA_Z, MAX_CAMERA_Z);
+      }
+    }
+
+    function onPointerUp(event) {
+      event.preventDefault();
+      pointers.delete(event.pointerId);
+      if (pointers.size === 0) {
+        lastSingle = null;
+        document.body.classList.remove("dragging");
+      } else if (pointers.size === 1) {
+        const point = [...pointers.values()][0];
+        lastSingle = { ...point };
+      }
+    }
+
+    ["pointerdown","pointermove","pointerup","pointercancel"].forEach((type) => {
+      renderer.domElement.addEventListener(type, type === "pointerdown" ? onPointerDown : type === "pointermove" ? onPointerMove : onPointerUp, { passive:false });
+    });
+
+    const block = (event) => event.preventDefault();
+    ["gesturestart","gesturechange","gestureend","contextmenu","dragstart","selectstart"].forEach((type) => {
+      document.addEventListener(type, block, { passive:false });
+    });
+    document.addEventListener("touchmove", (event) => { if (event.touches.length > 1) event.preventDefault(); }, { passive:false });
+    let lastTouchEnd = 0;
+    document.addEventListener("touchend", (event) => {
+      const now = Date.now();
+      if (now-lastTouchEnd <= 300) event.preventDefault();
+      lastTouchEnd = now;
+    }, { passive:false });
+
+    function resize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      camera.aspect = width / Math.max(1,height);
+      camera.updateProjectionMatrix();
+      renderer.setSize(width,height,false);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    }
+    window.addEventListener("resize", resize, { passive:true });
+    window.visualViewport?.addEventListener("resize", resize, { passive:true });
+    resize();
+
+    function updateLabels() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      world.updateMatrixWorld(true);
+      labels.forEach((label) => {
+        tmpWorld.copy(label.local).applyMatrix4(world.matrixWorld);
+        tmpNormal.copy(tmpWorld).normalize();
+        tmpToCamera.copy(camera.position).sub(tmpWorld).normalize();
+        const facing = tmpNormal.dot(tmpToCamera);
+        if (facing <= 0.04) { label.el.style.opacity = "0"; return; }
+        tmpProjected.copy(tmpWorld).project(camera);
+        const sx = (tmpProjected.x * .5 + .5) * width;
+        const sy = (-tmpProjected.y * .5 + .5) * height;
+        if (tmpProjected.z < -1 || tmpProjected.z > 1 || sx < -80 || sx > width+80 || sy < -50 || sy > height+50) {
+          label.el.style.opacity = "0"; return;
+        }
+        label.el.style.transform = `translate3d(${sx}px, ${sy}px, 0) translate(-50%, -50%)`;
+        label.el.style.opacity = String(THREE.MathUtils.clamp((facing-.04)*2.8,0,1));
+      });
+    }
+
+    function animate() {
+      updateLabels();
+      renderer.render(scene,camera);
+      requestAnimationFrame(animate);
+    }
+    animate();
+  </script>
+</body>
+</html>
