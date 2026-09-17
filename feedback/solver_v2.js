@@ -41,6 +41,25 @@ const NEW_TAIPEI_NORTH = new Set([
 ]);
 const KEELUNG_NEAR = new Set(["萬里區", "瑞芳區", "汐止區"]);
 
+const BOOST_REGIONS = new Set([
+  "台北市|北投區", "台北市|士林區", "台北市|內湖區",
+  "新北市|金山區", "新北市|三芝區", "新北市|石門區",
+  "新北市|貢寮區", "新北市|雙溪區", "新北市|平溪區", "新北市|坪林區",
+  "基隆市|仁愛區", "基隆市|安樂區", "基隆市|暖暖區",
+  "宜蘭縣|頭城鎮", "宜蘭縣|礁溪鄉", "宜蘭縣|宜蘭市", "宜蘭縣|員山鄉",
+  "宜蘭縣|羅東鎮", "宜蘭縣|三星鄉", "宜蘭縣|冬山鄉"
+]);
+
+function signedRegionKey(stat) {
+  return `${stat.county}|${stat.town}`;
+}
+function isBoostRegion(stat) {
+  return BOOST_REGIONS.has(signedRegionKey(stat));
+}
+function boostWeight(stat) {
+  return isBoostRegion(stat) ? stat.sourceArea : 0;
+}
+
 function allocateWithCaps(stats, amount, weightFn, maxFactor) {
   let remaining = amount;
   let active = stats.filter(s => weightFn(s) > 0 && s.sourceArea > 0);
@@ -100,14 +119,10 @@ function isNorthPrimeSink(stat) {
   return isNorthBeltSink(stat);
 }
 function sinkTier(stat) {
-  if (isSouthPrimeSink(stat)) return "south";
-  if (isNorthPrimeSink(stat)) return "north";
-  if (isEligibleCoastalSink(stat) && stat.radial >= 0.64) return "second";
-  if (isEligibleCoastalSink(stat)) return "general";
-  return "none";
+  return isBoostRegion(stat) ? "boost" : "none";
 }
 function anySinkWeight(stat) {
-  return sinkTier(stat) === "north" ? northWeight(stat) : sinkWeight(stat);
+  return boostWeight(stat);
 }
 
 function buildTownStats(features, centerLon, centerLat) {
@@ -298,31 +313,12 @@ function donorLambda(q) {
   return 0;
 }
 function feedbackDonorEligible(stat) {
-  if (sinkTier(stat) !== "none") return false;
-  return stat.coastExposure < 0.08 || stat.baseTargetArea < stat.sourceArea;
+  return !isBoostRegion(stat);
 }
 function allocateFeedbackPool(towns, pool) {
   if (pool <= 1e-14) return 0;
-  const all = [...towns.values()];
-  const groups = {
-    south: all.filter(s => sinkTier(s) === "south"),
-    north: all.filter(s => sinkTier(s) === "north"),
-    second: all.filter(s => sinkTier(s) === "second"),
-    general: all.filter(s => sinkTier(s) === "general")
-  };
-  const quotas = [
-    [groups.south, pool * FEEDBACK_SOUTH_SHARE, sinkWeight],
-    [groups.north, pool * FEEDBACK_NORTH_SHARE, northWeight],
-    [groups.second, pool * FEEDBACK_SECOND_SHARE, sinkWeight],
-    [groups.general, pool * FEEDBACK_GENERAL_SHARE, sinkWeight]
-  ];
-  let leftover = 0;
-  for (const [group, amount, weightFn] of quotas) leftover += allocateWithCaps(group, amount, weightFn, COASTAL_GAIN_CAP);
-  if (leftover > 1e-14) {
-    const fallback = all.filter(s => sinkTier(s) !== "none");
-    leftover = allocateWithCaps(fallback, leftover, anySinkWeight, COASTAL_GAIN_CAP);
-  }
-  return leftover;
+  const receivers = [...towns.values()].filter(isBoostRegion);
+  return allocateWithCaps(receivers, pool, boostWeight, COASTAL_GAIN_CAP);
 }
 function applyFeedback(towns, audit) {
   let pool = 0;
@@ -368,6 +364,6 @@ export function buildSolvedProjection(features) {
   }
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "checkpointA-nantou-target-1";
+  p.policyVersion = "signed-policy-1";
   return p;
 }
