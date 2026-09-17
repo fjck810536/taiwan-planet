@@ -8,7 +8,7 @@ import {
 export const TARGET_MAX_COLAT_DEG = 115;
 export const FINAL_AUDIT_EDGE_DEG = 1.5;
 const QUICK_AUDIT_EDGE_DEG = 4.5;
-const NANTOU_AREA_RETAIN = 0.35;
+const NANTOU_AREA_RETAIN = 1.00;
 const ADJACENT_AREA_RETAIN = 0.90;
 const MIDDLE_POOL_SHARE = 0.15;
 const MIDDLE_GAIN_CAP = 0.20;
@@ -368,6 +368,6 @@ export function buildSolvedProjection(features) {
   }
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "checkpointA-no-county-adjacency-proxy";
+  p.policyVersion = "checkpointA-nantou-target-1";
   return p;
 }
