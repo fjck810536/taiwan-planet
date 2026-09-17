@@ -13,6 +13,23 @@ const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
 const ROTATION_SPEED = 0.0062;
 
+// Area-flow prototype: keep the topology continuous, then redistribute visual area
+// through one smooth source-plane deformation field before the conformal sphere map.
+const NANTOU_AREA_RETAIN = 0.35;
+const ADJACENT_AREA_RETAIN = 0.90;
+const MIDDLE_POOL_SHARE = 0.15;
+const MIDDLE_GAIN_CAP = 0.20;
+const POLICY_WARP_STRENGTH = 0.88;
+const POLICY_SIGMA_MULTIPLIER = 2.35;
+
+const NANTOU_COUNTY = "南投縣";
+const NANTOU_ADJACENT = new Set(["台中市", "彰化縣", "雲林縣", "嘉義縣", "高雄市", "花蓮縣"]);
+const COASTAL_RECEIVERS = new Set([
+  "基隆市", "新北市", "桃園市", "新竹縣", "新竹市", "苗栗縣",
+  "台南市", "屏東縣", "台東縣", "宜蘭縣"
+]);
+const MIDDLE_RECEIVERS = new Set(["台北市", "嘉義市"]);
+
 const stage = document.querySelector("#stage");
 const labelsLayer = document.querySelector("#labels");
 const statusEl = document.querySelector("#status");
@@ -112,6 +129,120 @@ function rawSourceXY(centerLon, centerLat, lon, lat) {
   return new THREE.Vector2(rho * Math.sin(bearing), rho * Math.cos(bearing));
 }
 
+function ringPlanarArea(ring, centerLon, centerLat) {
+  if (!ring?.length) return 0;
+  let area2 = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = rawSourceXY(centerLon, centerLat, ring[i][0], ring[i][1]);
+    const bCoord = ring[(i + 1) % ring.length];
+    const b = rawSourceXY(centerLon, centerLat, bCoord[0], bCoord[1]);
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area2) * 0.5;
+}
+
+function polygonPlanarArea(polygon, centerLon, centerLat) {
+  if (!polygon?.length) return 0;
+  let area = ringPlanarArea(polygon[0], centerLon, centerLat);
+  for (let i = 1; i < polygon.length; i++) area -= ringPlanarArea(polygon[i], centerLon, centerLat);
+  return Math.max(0, area);
+}
+
+function featurePlanarArea(feature, centerLon, centerLat) {
+  const g = feature.geometry;
+  if (!g) return 0;
+  if (g.type === "Polygon") return polygonPlanarArea(g.coordinates, centerLon, centerLat);
+  if (g.type === "MultiPolygon") return g.coordinates.reduce((sum, p) => sum + polygonPlanarArea(p, centerLon, centerLat), 0);
+  return 0;
+}
+
+function buildAreaPolicy(features, centerLon, centerLat) {
+  const counties = new Map();
+  for (const f of features) {
+    const county = featureCountyName(f);
+    if (!county) continue;
+    if (!counties.has(county)) counties.set(county, { county, area: 0, points: [] });
+    const stat = counties.get(county);
+    stat.area += featurePlanarArea(f, centerLon, centerLat);
+    eachCoordinate(f.geometry, ([lon, lat]) => stat.points.push(rawSourceXY(centerLon, centerLat, lon, lat)));
+  }
+
+  for (const stat of counties.values()) {
+    let sx = 0, sy = 0;
+    for (const p of stat.points) { sx += p.x; sy += p.y; }
+    const n = Math.max(1, stat.points.length);
+    stat.center = new THREE.Vector2(sx / n, sy / n);
+    stat.eqRadius = Math.sqrt(Math.max(stat.area, 1e-12) / Math.PI);
+    stat.targetArea = stat.area;
+  }
+
+  let pool = 0;
+  const nantou = counties.get(NANTOU_COUNTY);
+  if (nantou) {
+    nantou.targetArea = nantou.area * NANTOU_AREA_RETAIN;
+    pool += nantou.area - nantou.targetArea;
+  }
+  for (const county of NANTOU_ADJACENT) {
+    const stat = counties.get(county);
+    if (!stat) continue;
+    stat.targetArea = stat.area * ADJACENT_AREA_RETAIN;
+    pool += stat.area - stat.targetArea;
+  }
+
+  const middleStats = [...MIDDLE_RECEIVERS].map(name => counties.get(name)).filter(Boolean);
+  const middleBase = middleStats.reduce((sum, s) => sum + s.area, 0);
+  const desiredMiddleGain = pool * MIDDLE_POOL_SHARE;
+  const middleCapacity = middleBase * MIDDLE_GAIN_CAP;
+  const middleGain = Math.min(desiredMiddleGain, middleCapacity);
+  const coastalGain = pool - middleGain;
+
+  const coastalStats = [...COASTAL_RECEIVERS].map(name => counties.get(name)).filter(Boolean);
+  const coastalBase = coastalStats.reduce((sum, s) => sum + s.area, 0);
+
+  for (const stat of middleStats) {
+    const share = middleBase > 0 ? stat.area / middleBase : 0;
+    stat.targetArea += middleGain * share;
+  }
+  for (const stat of coastalStats) {
+    const share = coastalBase > 0 ? stat.area / coastalBase : 0;
+    stat.targetArea += coastalGain * share;
+  }
+
+  const seeds = [];
+  const audit = [];
+  for (const stat of counties.values()) {
+    const factor = stat.area > 0 ? stat.targetArea / stat.area : 1;
+    const linearScale = Math.sqrt(Math.max(0.05, factor));
+    const sigma = Math.max(0.0035, stat.eqRadius * POLICY_SIGMA_MULTIPLIER);
+    seeds.push({ county: stat.county, center: stat.center, linearScale, sigma, factor });
+    audit.push({ county: stat.county, targetAreaFactor: Number(factor.toFixed(3)) });
+  }
+  console.table(audit.sort((a, b) => a.targetAreaFactor - b.targetAreaFactor));
+  return seeds;
+}
+
+function warpSourceXY(raw, seeds, strength = POLICY_WARP_STRENGTH) {
+  if (!seeds?.length || strength <= 0) return raw.clone();
+  let dx = 0, dy = 0, totalW = 0;
+  for (const seed of seeds) {
+    const ox = raw.x - seed.center.x;
+    const oy = raw.y - seed.center.y;
+    const d2 = ox * ox + oy * oy;
+    const sigma2 = seed.sigma * seed.sigma;
+    const w = Math.exp(-d2 / (2 * sigma2));
+    if (w < 1e-5) continue;
+    const localDelta = seed.linearScale - 1;
+    dx += w * localDelta * ox;
+    dy += w * localDelta * oy;
+    totalW += w;
+  }
+  const norm = Math.max(1, totalW);
+  return new THREE.Vector2(
+    raw.x + strength * dx / norm,
+    raw.y + strength * dy / norm
+  );
+}
+
 function buildProjection(features) {
   let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
@@ -121,9 +252,12 @@ function buildProjection(features) {
 
   const centerLon = (minLon + maxLon) / 2;
   const centerLat = (minLat + maxLat) / 2;
+  const policySeeds = buildAreaPolicy(features, centerLon, centerLat);
   let maxSourceRho = 1e-12;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
-    maxSourceRho = Math.max(maxSourceRho, rawSourceXY(centerLon, centerLat, lon, lat).length());
+    const raw = rawSourceXY(centerLon, centerLat, lon, lat);
+    const warped = warpSourceXY(raw, policySeeds);
+    maxSourceRho = Math.max(maxSourceRho, warped.length());
   });
 
   const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
@@ -131,6 +265,7 @@ function buildProjection(features) {
   return {
     centerLon,
     centerLat,
+    policySeeds,
     maxSourceRho,
     targetMaxRho,
     conformalScale: targetMaxRho / maxSourceRho
@@ -139,7 +274,8 @@ function buildProjection(features) {
 
 function sourceLocalXY(lon, lat) {
   const p = projectionState;
-  return rawSourceXY(p.centerLon, p.centerLat, lon, lat);
+  const raw = rawSourceXY(p.centerLon, p.centerLat, lon, lat);
+  return warpSourceXY(raw, p.policySeeds);
 }
 
 function geoToVector3(lon, lat, radius = RADIUS) {
@@ -297,7 +433,7 @@ async function loadTaiwan() {
     projectionState = buildProjection(features);
     buildLandGeometry(features);
     buildLabels(features);
-    statusEl.textContent = `本島行政區 ${features.length} 個・Stereographic 等角・${TARGET_MAX_COLAT_DEG}°`;
+    statusEl.textContent = `本島行政區 ${features.length} 個・115° 等角・面積流原型`;
     document.body.classList.add("ready");
   } catch (err) {
     console.error(err);
