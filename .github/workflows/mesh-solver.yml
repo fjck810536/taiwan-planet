@@ -6,6 +6,7 @@ on:
       - 'mesh_solver/solve_mesh.py'
       - 'mesh_solver/solve_mesh_v2.py'
       - 'mesh_solver/solve_mesh_v3.py'
+      - 'mesh_solver/solve_mesh_v4.py'
       - 'mesh_solver/policy.json'
       - 'mesh_solver/viewer.js'
       - 'mesh_solver/index.html'
@@ -24,7 +25,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check numpy shapely
-      - run: python mesh_solver/solve_mesh_v3.py
+      - run: python mesh_solver/solve_mesh_v4.py
       - name: Commit generated mesh
         run: |
           git config user.name "github-actions[bot]"
