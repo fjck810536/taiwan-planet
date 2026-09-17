@@ -285,7 +285,7 @@ function onPointerMove(e) {
       MIN_CAMERA_Z,
       MAX_CAMERA_Z
     );
-    world.rotation.z = twistStartWorldZ + twistDelta;
+    world.rotation.z = twistStartWorldZ - twistDelta;
   }
 }
 function onPointerUp(e) {
