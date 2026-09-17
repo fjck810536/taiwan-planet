@@ -140,6 +140,11 @@ def main() -> None:
         within[str(pct)] = sum(lo <= r["ratio"] <= hi for r in report)
 
     output = {
+        "meshIdentity": {
+            "version": data.get("version"),
+            "method": data.get("method"),
+            "targetMaxColatDeg": data.get("targetMaxColatDeg"),
+        },
         "meshMeta": data.get("meta", {}),
         "solverDiagnostics": data.get("diagnostics", {}),
         "meshSchema": probe,
@@ -155,6 +160,7 @@ def main() -> None:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n")
     print(f"wrote {OUT}")
+    print("meshIdentity", json.dumps(output["meshIdentity"], ensure_ascii=False))
     print("solverDiagnostics", json.dumps(output["solverDiagnostics"], ensure_ascii=False))
     for name, rows in groups.items():
         print(f"[{name}]")
