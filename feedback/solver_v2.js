@@ -46,6 +46,19 @@ const TAIPEI_REF_LAT = 25.05;
 const DIRECTIONAL_BOOST_RADIUS_DEG = 1.45;
 const DIRECTIONAL_RECEIVER_FLOOR = 0.055;
 
+const VISIBLE_BOOST_TARGETS = new Map([
+  ["台北市|北投區", 1.35], ["台北市|士林區", 1.35], ["台北市|內湖區", 1.30],
+  ["新北市|金山區", 1.35], ["新北市|三芝區", 1.35], ["新北市|石門區", 1.35],
+  ["新北市|貢寮區", 1.30], ["新北市|雙溪區", 1.30], ["新北市|平溪區", 1.25], ["新北市|坪林區", 1.25],
+  ["基隆市|仁愛區", 1.35], ["基隆市|安樂區", 1.35], ["基隆市|暖暖區", 1.35],
+  ["宜蘭縣|頭城鎮", 1.30], ["宜蘭縣|礁溪鄉", 1.30], ["宜蘭縣|宜蘭市", 1.25], ["宜蘭縣|員山鄉", 1.25],
+  ["宜蘭縣|羅東鎮", 1.22], ["宜蘭縣|三星鄉", 1.22], ["宜蘭縣|冬山鄉", 1.22]
+]);
+
+function explicitBoostTarget(stat) {
+  return VISIBLE_BOOST_TARGETS.get(`${stat.county}|${stat.town}`) || 1;
+}
+
 function directionalBoostScore(stat) {
   if (isTaipeiCore(stat) || stat.county === NANTOU_COUNTY) return 0;
 
@@ -213,6 +226,13 @@ function applyBasePolicy(towns) {
     if (s.county === NANTOU_COUNTY) {
       s.controlArea = s.sourceArea * NANTOU_AREA_RETAIN;
       pool += s.sourceArea - s.controlArea;
+    }
+  }
+
+  for (const s of towns.values()) {
+    const targetFactor = explicitBoostTarget(s);
+    if (targetFactor > 1) {
+      s.controlArea = Math.max(s.controlArea, s.sourceArea * targetFactor);
     }
   }
 
@@ -468,6 +488,6 @@ export function buildSolvedProjection(features) {
 
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "directional-boost-north-west-east+xinyi-local1.2";
+  p.policyVersion = "visible-boost-targets+directional+xinyi-local1.2";
   return p;
 }
