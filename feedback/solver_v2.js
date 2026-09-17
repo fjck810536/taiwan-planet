@@ -125,6 +125,53 @@ function anySinkWeight(stat) {
   return boostWeight(stat);
 }
 
+function coastRawPoints(features, centerLon, centerLat) {
+  const edges = new Map();
+  function addRing(ring) {
+    const pts = cleanRing(ring);
+    if (pts.length < 2) return;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const ak = `${a[0].toFixed(7)},${a[1].toFixed(7)}`;
+      const bk = `${b[0].toFixed(7)},${b[1].toFixed(7)}`;
+      const key = ak < bk ? `${ak}|${bk}` : `${bk}|${ak}`;
+      const rec = edges.get(key);
+      if (rec) rec.count += 1;
+      else edges.set(key, { count: 1, a, b });
+    }
+  }
+  for (const f of features) {
+    const g = f.geometry;
+    if (!g) continue;
+    if (g.type === "Polygon") {
+      for (const ring of g.coordinates) addRing(ring);
+    } else if (g.type === "MultiPolygon") {
+      for (const poly of g.coordinates) for (const ring of poly) addRing(ring);
+    }
+  }
+  const out = [];
+  for (const rec of edges.values()) {
+    if (rec.count !== 1) continue;
+    out.push(rawSourceXY(centerLon, centerLat, rec.a[0], rec.a[1]));
+    out.push(rawSourceXY(centerLon, centerLat, rec.b[0], rec.b[1]));
+  }
+  return out;
+}
+
+function applyXinyiLocalWarp(raw, p) {
+  const amp = p?.xinyiLocalAmp || 0;
+  const center = p?.xinyiLocalCenter;
+  const radius = p?.xinyiLocalRadius || 0;
+  if (!(amp > 0) || !center || !(radius > 0)) return raw.clone();
+  const dx = raw.x - center.x, dy = raw.y - center.y;
+  const r = Math.hypot(dx, dy);
+  if (r >= radius) return raw.clone();
+  const u = r / radius;
+  const falloff = (1 - u) * (1 - u);
+  const gain = 1 - amp * falloff;
+  return new THREE.Vector2(center.x + dx * gain, center.y + dy * gain);
+}
+
 function buildTownStats(features, centerLon, centerLat) {
   const coastline = buildCoastlineStats(features, centerLon, centerLat);
   const towns = new Map();
@@ -214,19 +261,27 @@ export function warpSourceXY(raw, seeds, strength = POLICY_WARP_STRENGTH) {
   return new THREE.Vector2(raw.x + strength * dx / norm, raw.y + strength * dy / norm);
 }
 
-function buildProjectionFromTowns(features, centerLon, centerLat, towns) {
+function buildProjectionFromTowns(features, centerLon, centerLat, towns, local = null) {
   const seeds = seedsFromTowns(towns);
+  const localState = {
+    xinyiLocalAmp: local?.amp || 0,
+    xinyiLocalCenter: local?.center || null,
+    xinyiLocalRadius: local?.radius || 0
+  };
   let maxSourceRho = 1e-12;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
-    const warped = warpSourceXY(rawSourceXY(centerLon, centerLat, lon, lat), seeds);
+    const raw = rawSourceXY(centerLon, centerLat, lon, lat);
+    const localRaw = applyXinyiLocalWarp(raw, localState);
+    const warped = warpSourceXY(localRaw, seeds);
     maxSourceRho = Math.max(maxSourceRho, warped.length());
   });
   const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
   const targetMaxRho = 2 * Math.tan(targetMaxColat / 2);
-  return { centerLon, centerLat, seeds, maxSourceRho, conformalScale: targetMaxRho / maxSourceRho };
+  return { centerLon, centerLat, seeds, maxSourceRho, conformalScale: targetMaxRho / maxSourceRho, ...localState };
 }
 export function sourceLocalXYForProjection(lon, lat, p) {
-  return warpSourceXY(rawSourceXY(p.centerLon, p.centerLat, lon, lat), p.seeds);
+  const raw = rawSourceXY(p.centerLon, p.centerLat, lon, lat);
+  return warpSourceXY(applyXinyiLocalWarp(raw, p), p.seeds);
 }
 export function geoToVector3WithProjection(lon, lat, p, radius = 1) {
   const source = sourceLocalXYForProjection(lon, lat, p);
@@ -362,8 +417,49 @@ export function buildSolvedProjection(features) {
     applyFeedback(towns, quick);
     p = buildProjectionFromTowns(features, centerLon, centerLat, towns);
   }
+
+  const xinyi = [...towns.values()].find(s => s.county === "南投縣" && s.town === "信義鄉");
+  if (xinyi) {
+    const coast = coastRawPoints(features, centerLon, centerLat);
+    let minCoastDistance = Infinity;
+    for (const q of coast) minCoastDistance = Math.min(minCoastDistance, q.distanceTo(xinyi.center));
+    const supportRadius = Math.min(
+      Number.isFinite(minCoastDistance) ? minCoastDistance * 0.70 : xinyi.eqRadius * 2.4,
+      xinyi.eqRadius * 2.8
+    );
+    const targetActual = 1.20;
+    const solveAt = amp => {
+      const q = buildProjectionFromTowns(features, centerLon, centerLat, towns, {
+        amp, center: xinyi.center, radius: supportRadius
+      });
+      const a = auditProjectedAreas(towns, q, QUICK_AUDIT_EDGE_DEG, false);
+      const row = a.rows.find(r => r.stat === xinyi);
+      return { projection: q, actual: row?.actualFactor ?? Infinity };
+    };
+
+    let lo = 0, hi = 0.85;
+    let hiResult = solveAt(hi);
+    if (hiResult.actual > targetActual) {
+      p = hiResult.projection;
+    } else {
+      let best = hiResult;
+      for (let i = 0; i < 9; i++) {
+        const mid = (lo + hi) / 2;
+        const result = solveAt(mid);
+        if (result.actual > targetActual) lo = mid;
+        else {
+          hi = mid;
+          best = result;
+        }
+      }
+      p = best.projection;
+    }
+    p.xinyiLocalSupportRadius = supportRadius;
+    p.xinyiLocalNearestCoast = minCoastDistance;
+  }
+
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "signed-policy-1";
+  p.policyVersion = "signed-policy-1+xinyi-local1.2";
   return p;
 }
