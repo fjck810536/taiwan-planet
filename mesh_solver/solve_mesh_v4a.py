@@ -9,7 +9,7 @@ BASE = Path(__file__).with_name('solve_mesh_v4.py')
 code = BASE.read_text()
 
 marker = 'src = src.replace("anchors={north,south,east,west}", "anchors=set()", 1)\n'
-patch = r'''
+patch = r"""
 
 # v4a ONLY: replace v2's county-level Nantou-adjacent target proxy with the
 # exact township adjacency graph derived from shared mesh edges.
@@ -35,7 +35,7 @@ src, n = re.subn(
 )
 if n != 1:
     raise RuntimeError('v4a could not replace county-level Nantou adjacency targets')
-'''
+"""
 
 if marker not in code:
     raise RuntimeError('v4a could not find v4 injection marker')
