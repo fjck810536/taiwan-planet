@@ -25,6 +25,8 @@ const FEEDBACK_MIN_CONTROL_FACTOR = 0.12;
 const NANTOU_FEEDBACK_LAMBDA = 0.80;
 const NANTOU_MAX_CONTROL_CUT = 0.50;
 const NANTOU_MIN_CONTROL_FACTOR = 0.06;
+const XINYI_ACTUAL_CAP = 1.20;
+const XINYI_CAP_PASSES = 6;
 const FEEDBACK_SOUTH_SHARE = 0.25;
 const FEEDBACK_NORTH_SHARE = 0.40;
 const FEEDBACK_SECOND_SHARE = 0.25;
@@ -320,6 +322,29 @@ function allocateFeedbackPool(towns, pool) {
   const receivers = [...towns.values()].filter(isBoostRegion);
   return allocateWithCaps(receivers, pool, boostWeight, COASTAL_GAIN_CAP);
 }
+function applyXinyiActualCap(towns, projection) {
+  let p = projection;
+  for (let pass = 0; pass < XINYI_CAP_PASSES; pass++) {
+    const audit = auditProjectedAreas(towns, p, QUICK_AUDIT_EDGE_DEG, false);
+    const row = audit.rows.find(r =>
+      r.stat.county === "南投縣" && r.stat.town === "信義鄉"
+    );
+    if (!row || row.actualFactor <= XINYI_ACTUAL_CAP + 0.005) break;
+
+    const s = row.stat;
+    const ratio = THREE.MathUtils.clamp(XINYI_ACTUAL_CAP / row.actualFactor, 0.55, 0.98);
+    const floorArea = s.sourceArea * NANTOU_MIN_CONTROL_FACTOR;
+    const nextArea = Math.max(floorArea, s.controlArea * ratio);
+    const released = Math.max(0, s.controlArea - nextArea);
+    if (released <= 1e-14) break;
+
+    s.controlArea = nextArea;
+    allocateFeedbackPool(towns, released);
+    p = buildProjectionFromTowns([...towns.values()].map(s => s.feature), p.centerLon, p.centerLat, towns);
+  }
+  return p;
+}
+
 function applyFeedback(towns, audit) {
   let pool = 0;
   const donorLog = [];
@@ -362,8 +387,9 @@ export function buildSolvedProjection(features) {
     applyFeedback(towns, quick);
     p = buildProjectionFromTowns(features, centerLon, centerLat, towns);
   }
+  p = applyXinyiActualCap(towns, p);
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "signed-policy-1";
+  p.policyVersion = "signed-policy-1+xinyi-cap1.2";
   return p;
 }
