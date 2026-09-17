@@ -5,7 +5,9 @@ const DATA_URL = "https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/towns-10t.
 const MAINLAND_BOX = { minLon: 120.0, maxLon: 122.12, minLat: 21.72, maxLat: 25.58 };
 const OFFSHORE_TOWNS = new Set(["綠島鄉", "兰嶼鄉", "蘭嶼鄉", "琉球鄉"]);
 const RADIUS = 1;
-const TARGET_RADIUS_DEG = 42;
+const TARGET_MAX_COLAT_DEG = 85;
+const MAX_MESH_EDGE_DEG = 5;
+const MAX_BORDER_EDGE_DEG = 4;
 const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
 const ROTATION_SPEED = 0.0062;
@@ -82,44 +84,75 @@ function centroidOfFeature(f) {
   return n ? [sx / n, sy / n] : [121, 23.7];
 }
 
+function sourcePolar(centerLonDeg, centerLatDeg, lonDeg, latDeg) {
+  const lon1 = THREE.MathUtils.degToRad(centerLonDeg);
+  const lat1 = THREE.MathUtils.degToRad(centerLatDeg);
+  const lon2 = THREE.MathUtils.degToRad(lonDeg);
+  const lat2 = THREE.MathUtils.degToRad(latDeg);
+  const dLon = lon2 - lon1;
+  const sinLat1 = Math.sin(lat1), cosLat1 = Math.cos(lat1);
+  const sinLat2 = Math.sin(lat2), cosLat2 = Math.cos(lat2);
+  const cosAngle = THREE.MathUtils.clamp(
+    sinLat1 * sinLat2 + cosLat1 * cosLat2 * Math.cos(dLon),
+    -1,
+    1
+  );
+  const angle = Math.acos(cosAngle);
+  const bearing = Math.atan2(
+    Math.sin(dLon) * cosLat2,
+    cosLat1 * sinLat2 - sinLat1 * cosLat2 * Math.cos(dLon)
+  );
+  return { angle, bearing };
+}
+
 function buildProjection(features) {
   let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
     minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
     minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
   });
+
   const centerLon = (minLon + maxLon) / 2;
   const centerLat = (minLat + maxLat) / 2;
-  const cosLat = Math.cos(THREE.MathUtils.degToRad(centerLat));
-  const kmPerDeg = 111.195;
-  let maxR = 1e-9;
+  let maxSourceRho = 1e-12;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
-    const x = (lon - centerLon) * cosLat * kmPerDeg;
-    const y = (lat - centerLat) * kmPerDeg;
-    maxR = Math.max(maxR, Math.hypot(x, y));
+    const { angle } = sourcePolar(centerLon, centerLat, lon, lat);
+    maxSourceRho = Math.max(maxSourceRho, 2 * Math.sin(angle / 2));
   });
-  const targetRadius = THREE.MathUtils.degToRad(TARGET_RADIUS_DEG);
-  return { centerLon, centerLat, cosLat, kmPerDeg, maxR, radiansPerKm: targetRadius / maxR };
+
+  const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
+  const targetMaxRho = 2 * Math.sin(targetMaxColat / 2);
+  return {
+    centerLon,
+    centerLat,
+    maxSourceRho,
+    targetMaxRho,
+    equalAreaScale: targetMaxRho / maxSourceRho
+  };
 }
+
 function sourceLocalXY(lon, lat) {
   const p = projectionState;
-  return new THREE.Vector2(
-    (lon - p.centerLon) * p.cosLat * p.kmPerDeg,
-    (lat - p.centerLat) * p.kmPerDeg
-  );
+  const { angle, bearing } = sourcePolar(p.centerLon, p.centerLat, lon, lat);
+  const rho = 2 * Math.sin(angle / 2);
+  return new THREE.Vector2(rho * Math.sin(bearing), rho * Math.cos(bearing));
 }
+
 function geoToVector3(lon, lat, radius = RADIUS) {
-  const { x, y } = sourceLocalXY(lon, lat);
-  const r = Math.hypot(x, y);
-  if (r < 1e-12) return new THREE.Vector3(0, 0, radius);
-  const theta = r * projectionState.radiansPerKm;
-  const s = Math.sin(theta);
+  const source = sourceLocalXY(lon, lat);
+  const x = source.x * projectionState.equalAreaScale;
+  const y = source.y * projectionState.equalAreaScale;
+  const rho = Math.hypot(x, y);
+  if (rho < 1e-12) return new THREE.Vector3(0, 0, radius);
+  const colat = 2 * Math.asin(THREE.MathUtils.clamp(rho / 2, 0, 1));
+  const s = Math.sin(colat);
   return new THREE.Vector3(
-    radius * s * (x / r),
-    radius * s * (y / r),
-    radius * Math.cos(theta)
+    radius * s * (x / rho),
+    radius * s * (y / rho),
+    radius * Math.cos(colat)
   );
 }
+
 function cleanRing(ring) {
   if (!ring?.length) return [];
   const out = ring.slice();
@@ -128,6 +161,50 @@ function cleanRing(ring) {
     if (Math.abs(a[0] - b[0]) < 1e-12 && Math.abs(a[1] - b[1]) < 1e-12) out.pop();
   }
   return out;
+}
+
+const midpointCoord = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+const mappedUnit = coord => geoToVector3(coord[0], coord[1], 1).normalize();
+
+function emitWarpedTriangle(bucket, a, b, c, depth = 0) {
+  const ua = mappedUnit(a), ub = mappedUnit(b), uc = mappedUnit(c);
+  const maxEdge = Math.max(ua.angleTo(ub), ub.angleTo(uc), uc.angleTo(ua));
+  if (maxEdge > THREE.MathUtils.degToRad(MAX_MESH_EDGE_DEG) && depth < 6) {
+    const ab = midpointCoord(a, b);
+    const bc = midpointCoord(b, c);
+    const ca = midpointCoord(c, a);
+    emitWarpedTriangle(bucket, a, ab, ca, depth + 1);
+    emitWarpedTriangle(bucket, ab, b, bc, depth + 1);
+    emitWarpedTriangle(bucket, ca, bc, c, depth + 1);
+    emitWarpedTriangle(bucket, ab, bc, ca, depth + 1);
+    return;
+  }
+
+  const base = bucket.positions.length / 3;
+  for (const coord of [a, b, c]) {
+    const v = geoToVector3(coord[0], coord[1], RADIUS * 1.009);
+    bucket.positions.push(v.x, v.y, v.z);
+    const n = v.clone().normalize();
+    bucket.normals.push(n.x, n.y, n.z);
+  }
+  bucket.indices.push(base, base + 1, base + 2);
+}
+
+function addBorderSegment(borderPositions, a, b) {
+  const ua = mappedUnit(a), ub = mappedUnit(b);
+  const steps = Math.max(1, Math.ceil(THREE.MathUtils.radToDeg(ua.angleTo(ub)) / MAX_BORDER_EDGE_DEG));
+  let prev = a;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const next = [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t
+    ];
+    const va = geoToVector3(prev[0], prev[1], RADIUS * 1.016);
+    const vb = geoToVector3(next[0], next[1], RADIUS * 1.016);
+    borderPositions.push(va.x, va.y, va.z, vb.x, vb.y, vb.z);
+    prev = next;
+  }
 }
 
 function addPolygonGeometry(bucket, polygon, borderPositions) {
@@ -139,23 +216,16 @@ function addPolygonGeometry(bucket, polygon, borderPositions) {
   const holes2D = holes.map(r => r.map(([lon, lat]) => sourceLocalXY(lon, lat)));
   const faces = THREE.ShapeUtils.triangulateShape(contour2D, holes2D);
   const all = outer.concat(...holes);
-  const base = bucket.positions.length / 3;
-  for (const [lon, lat] of all) {
-    const v = geoToVector3(lon, lat, RADIUS * 1.009);
-    bucket.positions.push(v.x, v.y, v.z);
-    const n = v.clone().normalize();
-    bucket.normals.push(n.x, n.y, n.z);
-  }
-  for (const tri of faces) bucket.indices.push(base + tri[0], base + tri[1], base + tri[2]);
+
+  for (const tri of faces) emitWarpedTriangle(bucket, all[tri[0]], all[tri[1]], all[tri[2]]);
+
   for (const ring of [outer, ...holes]) {
     for (let i = 0; i < ring.length; i++) {
-      const a = geoToVector3(ring[i][0], ring[i][1], RADIUS * 1.016);
-      const b0 = ring[(i + 1) % ring.length];
-      const b = geoToVector3(b0[0], b0[1], RADIUS * 1.016);
-      borderPositions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      addBorderSegment(borderPositions, ring[i], ring[(i + 1) % ring.length]);
     }
   }
 }
+
 function disposeLand() {
   while (landGroup.children.length) {
     const child = landGroup.children.pop();
@@ -188,6 +258,7 @@ function buildLandGeometry(features) {
     geometry.computeBoundingSphere();
     landGroup.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
       color: colors[i], roughness: 0.93, metalness: 0,
+      side: THREE.DoubleSide,
       polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1
     })));
   });
@@ -228,7 +299,7 @@ async function loadTaiwan() {
     projectionState = buildProjection(features);
     buildLandGeometry(features);
     buildLabels(features);
-    statusEl.textContent = `本島行政區 ${features.length} 個・正常地理基準`;
+    statusEl.textContent = `本島行政區 ${features.length} 個・Lambert 等面積・${TARGET_MAX_COLAT_DEG}°`;
     document.body.classList.add("ready");
   } catch (err) {
     console.error(err);
