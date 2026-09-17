@@ -25,6 +25,10 @@ const FEEDBACK_MIN_CONTROL_FACTOR = 0.12;
 const NANTOU_FEEDBACK_LAMBDA = 0.80;
 const NANTOU_MAX_CONTROL_CUT = 0.50;
 const NANTOU_MIN_CONTROL_FACTOR = 0.06;
+const HIGH_OUTLIER_TRIGGER = 1.50;
+const HIGH_OUTLIER_TARGET = 1.30;
+const HIGH_OUTLIER_LAMBDA = 0.85;
+const HIGH_OUTLIER_MAX_CONTROL_CUT = 0.55;
 const FEEDBACK_SOUTH_SHARE = 0.25;
 const FEEDBACK_NORTH_SHARE = 0.40;
 const FEEDBACK_SECOND_SHARE = 0.25;
@@ -410,10 +414,17 @@ function applyFeedback(towns, audit) {
     const s = row.stat;
     const q = row.errorVsTarget;
     const isNantou = s.county === NANTOU_COUNTY;
-    const lambda = isNantou ? (q > 1.05 ? NANTOU_FEEDBACK_LAMBDA : 0) : donorLambda(q);
+    const isHighOutlier = !isNantou && !isBoostRegion(s) && row.actualFactor > HIGH_OUTLIER_TRIGGER;
+    const lambda = isHighOutlier
+      ? HIGH_OUTLIER_LAMBDA
+      : (isNantou ? (q > 1.05 ? NANTOU_FEEDBACK_LAMBDA : 0) : donorLambda(q));
     if (!feedbackDonorEligible(s) || lambda <= 0 || row.actualFactor <= row.targetFactor) continue;
-    const desired = s.sourceArea * (row.actualFactor - row.targetFactor) * lambda;
-    const maxCut = s.controlArea * (isNantou ? NANTOU_MAX_CONTROL_CUT : FEEDBACK_MAX_CONTROL_CUT);
+    const donorTarget = isHighOutlier ? Math.max(HIGH_OUTLIER_TARGET, row.targetFactor) : row.targetFactor;
+    const desired = s.sourceArea * Math.max(0, row.actualFactor - donorTarget) * lambda;
+    const maxCut = s.controlArea * (
+      isHighOutlier ? HIGH_OUTLIER_MAX_CONTROL_CUT
+        : (isNantou ? NANTOU_MAX_CONTROL_CUT : FEEDBACK_MAX_CONTROL_CUT)
+    );
     const floorArea = s.sourceArea * (isNantou ? NANTOU_MIN_CONTROL_FACTOR : FEEDBACK_MIN_CONTROL_FACTOR);
     const cut = Math.max(0, Math.min(desired, maxCut, s.controlArea - floorArea));
     if (cut <= 1e-14) continue;
@@ -488,6 +499,6 @@ export function buildSolvedProjection(features) {
 
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "visible-boost-targets-v2+directional+xinyi-local1.2";
+  p.policyVersion = "visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
   return p;
 }
