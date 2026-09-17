@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Extract a small, reviewable diagnostic snapshot from generated/mesh.json.
 
-The mesh JSON is intentionally large and compact.  This script keeps the
-solver's numerical report inspectable in GitHub and gives stable observation
-sets for the design questions we repeatedly check while tuning the area-flow
-solver.
+The generated mesh is intentionally large and compact.  This script also
+prints a shallow schema probe when a solver version changes its output shape,
+so diagnostics do not silently depend on a stale mesh schema.
 """
 from __future__ import annotations
 
@@ -50,10 +49,51 @@ GROUPS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+def schema_probe(data: dict) -> dict:
+    out = {}
+    for key, value in data.items():
+        info = {"type": type(value).__name__}
+        if isinstance(value, (list, dict)):
+            info["length"] = len(value)
+        if isinstance(value, dict):
+            info["keys"] = list(value.keys())[:40]
+        elif isinstance(value, list) and value and isinstance(value[0], dict):
+            info["firstItemKeys"] = list(value[0].keys())[:40]
+        out[key] = info
+    return out
+
+
+def find_report(data: dict) -> tuple[str, list[dict]] | None:
+    """Find a town-level area report in current or nested solver schemas."""
+    candidates: list[tuple[str, list[dict]]] = []
+
+    def walk(value, path: str, depth: int = 0) -> None:
+        if depth > 3:
+            return
+        if isinstance(value, list):
+            if value and isinstance(value[0], dict):
+                keys = set(value[0])
+                if {"county", "town"} <= keys and (
+                    {"target", "actual"} <= keys
+                    or {"targetFactor", "actualFactor"} <= keys
+                ):
+                    candidates.append((path, value))
+            return
+        if isinstance(value, dict):
+            for k, v in value.items():
+                # Do not recurse into the huge numerical geometry arrays.
+                if k in {"vertices", "triangles"}:
+                    continue
+                walk(v, f"{path}.{k}" if path else k, depth + 1)
+
+    walk(data, "")
+    return candidates[0] if candidates else None
+
+
 def clean_row(row: dict) -> dict:
-    target = float(row["target"])
-    actual = float(row["actual"])
-    ratio = float(row.get("ratio", actual / target if target else math.inf))
+    target = float(row.get("target", row.get("targetFactor")))
+    actual = float(row.get("actual", row.get("actualFactor")))
+    ratio = float(row.get("ratio", row.get("actualToTarget", actual / target if target else math.inf)))
     return {
         "county": row["county"],
         "town": row["town"],
@@ -67,7 +107,15 @@ def clean_row(row: dict) -> dict:
 
 def main() -> None:
     data = json.loads(MESH.read_text())
-    report = [clean_row(r) for r in data["report"]]
+    probe = schema_probe(data)
+    print("mesh schema", json.dumps(probe, ensure_ascii=False))
+
+    found = find_report(data)
+    if found is None:
+        raise RuntimeError("No town-level target/actual report found; see mesh schema probe above")
+    report_path, raw_report = found
+    print("area report path", report_path, "rows", len(raw_report))
+    report = [clean_row(r) for r in raw_report]
     by_key = {(r["county"], r["town"]): r for r in report}
 
     groups = {}
@@ -94,6 +142,8 @@ def main() -> None:
     output = {
         "meshMeta": data.get("meta", {}),
         "solverDiagnostics": data.get("diagnostics", {}),
+        "meshSchema": probe,
+        "areaReportPath": report_path,
         "townCount": len(report),
         "withinTargetPct": within,
         "observationGroups": groups,
