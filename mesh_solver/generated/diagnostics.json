@@ -1,22 +1,24 @@
 {
   "meshIdentity": {
     "version": 2,
-    "method": "adaptive-shared-control-local-boundary-v7",
+    "method": "adaptive-shared-control-south-cluster-v8",
     "targetMaxColatDeg": 115
   },
   "meshMeta": {},
   "solverDiagnostics": {
-    "meanAbsLogRatio": 0.362631,
-    "maxAbsLogRatio": 1.102651,
+    "meanAbsLogRatio": 0.362595,
+    "maxAbsLogRatio": 1.103195,
     "invalidPolygons": 0,
     "invalidPolygonRegions": [],
     "invalidP0": [],
     "invalidRadial": [],
     "residualAcceptedIterations": 40,
-    "residualAcceptedMoves": 20172,
+    "residualAcceptedMoves": 20151,
+    "southInterfaceAcceptedMoves": 24,
+    "southClusterRatio": 0.4348942045522144,
     "vertices": 6040,
     "triangles": 11296,
-    "nantouFactor": 0.350055,
+    "nantouFactor": 0.350054,
     "rawArcPoints": 45355,
     "controlArcPoints": 7997,
     "simplifyTolerance": 0.004
@@ -66,7 +68,7 @@
     },
     "diagnostics": {
       "type": "dict",
-      "length": 14,
+      "length": 16,
       "keys": [
         "meanAbsLogRatio",
         "maxAbsLogRatio",
@@ -76,6 +78,8 @@
         "invalidRadial",
         "residualAcceptedIterations",
         "residualAcceptedMoves",
+        "southInterfaceAcceptedMoves",
+        "southClusterRatio",
         "vertices",
         "triangles",
         "nantouFactor",
@@ -100,64 +104,64 @@
         "county": "基隆市",
         "town": "仁愛區",
         "target": 3.0,
-        "actual": 1.819976,
-        "ratio": 0.6066586666666667,
-        "logGap": -0.4997889744795393,
-        "relativeGapPct": -39.334133333333334
+        "actual": 1.819973,
+        "ratio": 0.6066576666666667,
+        "logGap": -0.49979062285428305,
+        "relativeGapPct": -39.33423333333334
       },
       {
         "county": "基隆市",
         "town": "信義區",
         "target": 3.0,
-        "actual": 1.638146,
-        "ratio": 0.5460486666666667,
-        "logGap": -0.6050471741202166,
-        "relativeGapPct": -45.39513333333333
+        "actual": 1.638144,
+        "ratio": 0.546048,
+        "logGap": -0.605048395013361,
+        "relativeGapPct": -45.3952
       },
       {
         "county": "基隆市",
         "town": "中正區",
         "target": 3.0,
-        "actual": 1.525678,
-        "ratio": 0.5085593333333334,
-        "logGap": -0.6761733872457243,
-        "relativeGapPct": -49.14406666666666
+        "actual": 1.525676,
+        "ratio": 0.5085586666666667,
+        "logGap": -0.6761746981391834,
+        "relativeGapPct": -49.14413333333333
       },
       {
         "county": "基隆市",
         "town": "中山區",
         "target": 3.0,
-        "actual": 1.566762,
-        "ratio": 0.522254,
-        "logGap": -0.6496012194077275,
-        "relativeGapPct": -47.7746
+        "actual": 1.566759,
+        "ratio": 0.522253,
+        "logGap": -0.6496031341866616,
+        "relativeGapPct": -47.7747
       },
       {
         "county": "基隆市",
         "town": "安樂區",
         "target": 3.0,
-        "actual": 1.722427,
-        "ratio": 0.5741423333333333,
-        "logGap": -0.55487794592175,
-        "relativeGapPct": -42.58576666666667
+        "actual": 1.722425,
+        "ratio": 0.5741416666666667,
+        "logGap": -0.5548791070746819,
+        "relativeGapPct": -42.58583333333333
       },
       {
         "county": "基隆市",
         "town": "暖暖區",
         "target": 3.0,
-        "actual": 2.181267,
-        "ratio": 0.727089,
-        "logGap": -0.31870638803360507,
-        "relativeGapPct": -27.2911
+        "actual": 2.181263,
+        "ratio": 0.7270876666666667,
+        "logGap": -0.31870822183188263,
+        "relativeGapPct": -27.29123333333333
       },
       {
         "county": "基隆市",
         "town": "七堵區",
         "target": 2.517139,
-        "actual": 1.534326,
-        "ratio": 0.6095515583366672,
-        "logGap": -0.4950317424380063,
-        "relativeGapPct": -39.044844166333284
+        "actual": 1.534324,
+        "ratio": 0.6095507637838038,
+        "logGap": -0.49503304594280484,
+        "relativeGapPct": -39.04492362161962
       }
     ],
     "north_coast": [
@@ -165,73 +169,73 @@
         "county": "新北市",
         "town": "萬里區",
         "target": 3.0,
-        "actual": 1.716984,
-        "ratio": 0.5723280000000001,
-        "logGap": -0.5580430253751061,
-        "relativeGapPct": -42.767199999999995
+        "actual": 1.716981,
+        "ratio": 0.572327,
+        "logGap": -0.5580447726264613,
+        "relativeGapPct": -42.7673
       },
       {
         "county": "新北市",
         "town": "金山區",
         "target": 2.751959,
-        "actual": 1.638063,
-        "ratio": 0.5952352487809593,
-        "logGap": -0.5187985754745899,
-        "relativeGapPct": -40.476475121904066
+        "actual": 1.638061,
+        "ratio": 0.595234522025946,
+        "logGap": -0.5187997964295964,
+        "relativeGapPct": -40.4765477974054
       },
       {
         "county": "新北市",
         "town": "石門區",
         "target": 2.936256,
-        "actual": 1.711617,
-        "ratio": 0.5829249901915908,
-        "logGap": -0.5396967626732746,
-        "relativeGapPct": -41.70750098084092
+        "actual": 1.711614,
+        "ratio": 0.5829239684823121,
+        "logGap": -0.5396985154033708,
+        "relativeGapPct": -41.707603151768794
       },
       {
         "county": "新北市",
         "town": "三芝區",
         "target": 2.152333,
-        "actual": 1.596062,
-        "ratio": 0.7415497508982114,
-        "logGap": -0.29901302471464347,
-        "relativeGapPct": -25.84502491017886
+        "actual": 1.596059,
+        "ratio": 0.7415483570618486,
+        "logGap": -0.29901490434264016,
+        "relativeGapPct": -25.845164293815138
       },
       {
         "county": "新北市",
         "town": "淡水區",
         "target": 2.037597,
-        "actual": 1.626535,
-        "ratio": 0.7982613833844475,
-        "logGap": -0.22531918706368495,
-        "relativeGapPct": -20.173861661555247
+        "actual": 1.626532,
+        "ratio": 0.7982599110619029,
+        "logGap": -0.2253210314769725,
+        "relativeGapPct": -20.174008893809713
       },
       {
         "county": "新北市",
         "town": "貢寮區",
         "target": 2.851488,
-        "actual": 1.642837,
-        "ratio": 0.576133232894545,
-        "logGap": -0.5514163379250255,
-        "relativeGapPct": -42.3866767105455
+        "actual": 1.642834,
+        "ratio": 0.5761321808122637,
+        "logGap": -0.5514181640360392,
+        "relativeGapPct": -42.38678191877363
       },
       {
         "county": "新北市",
         "town": "瑞芳區",
         "target": 3.0,
-        "actual": 1.699051,
-        "ratio": 0.5663503333333334,
-        "logGap": -0.5685424287713899,
-        "relativeGapPct": -43.36496666666666
+        "actual": 1.699048,
+        "ratio": 0.5663493333333333,
+        "logGap": -0.5685441944645027,
+        "relativeGapPct": -43.36506666666667
       },
       {
         "county": "新北市",
         "town": "汐止區",
         "target": 1.906256,
-        "actual": 1.582568,
-        "ratio": 0.8301969934783157,
-        "logGap": -0.18609226481240165,
-        "relativeGapPct": -16.980300652168435
+        "actual": 1.582565,
+        "ratio": 0.8301954197127773,
+        "logGap": -0.18609416046733943,
+        "relativeGapPct": -16.980458028722268
       }
     ],
     "taipei_core_no_gain": [
@@ -239,55 +243,55 @@
         "county": "台北市",
         "town": "大同區",
         "target": 1.0,
-        "actual": 1.086012,
-        "ratio": 1.086012,
-        "logGap": 0.08251227117445284,
-        "relativeGapPct": 8.601199999999999
+        "actual": 1.08601,
+        "ratio": 1.08601,
+        "logGap": 0.08251042957248006,
+        "relativeGapPct": 8.600999999999992
       },
       {
         "county": "台北市",
         "town": "中山區",
         "target": 1.0,
-        "actual": 1.095988,
-        "ratio": 1.095988,
-        "logGap": 0.09165623956077457,
-        "relativeGapPct": 9.598799999999997
+        "actual": 1.095987,
+        "ratio": 1.095987,
+        "logGap": 0.09165532714160927,
+        "relativeGapPct": 9.598700000000004
       },
       {
         "county": "台北市",
         "town": "中正區",
         "target": 1.0,
-        "actual": 1.181579,
-        "ratio": 1.181579,
-        "logGap": 0.16685167956525163,
-        "relativeGapPct": 18.157899999999994
+        "actual": 1.181577,
+        "ratio": 1.181577,
+        "logGap": 0.16684998691356057,
+        "relativeGapPct": 18.15770000000001
       },
       {
         "county": "台北市",
         "town": "大安區",
         "target": 1.0,
-        "actual": 1.245832,
-        "ratio": 1.245832,
-        "logGap": 0.21980357981400875,
-        "relativeGapPct": 24.583200000000005
+        "actual": 1.24583,
+        "ratio": 1.24583,
+        "logGap": 0.21980197445983146,
+        "relativeGapPct": 24.583
       },
       {
         "county": "台北市",
         "town": "松山區",
         "target": 1.0,
-        "actual": 1.265771,
-        "ratio": 1.265771,
-        "logGap": 0.23568142268423298,
-        "relativeGapPct": 26.577099999999998
+        "actual": 1.265769,
+        "ratio": 1.265769,
+        "logGap": 0.23567984261834418,
+        "relativeGapPct": 26.57689999999999
       },
       {
         "county": "台北市",
         "town": "信義區",
         "target": 1.0,
-        "actual": 1.305611,
-        "ratio": 1.305611,
-        "logGap": 0.26667113043731144,
-        "relativeGapPct": 30.561100000000007
+        "actual": 1.305609,
+        "ratio": 1.305609,
+        "logGap": 0.26666959858629924,
+        "relativeGapPct": 30.560900000000004
       }
     ],
     "taipei_north": [
@@ -295,28 +299,28 @@
         "county": "台北市",
         "town": "北投區",
         "target": 1.764706,
-        "actual": 1.50306,
-        "ratio": 0.8517339432177371,
-        "logGap": -0.16048107413887405,
-        "relativeGapPct": -14.82660567822629
+        "actual": 1.503057,
+        "ratio": 0.8517322432178505,
+        "logGap": -0.16048307006917215,
+        "relativeGapPct": -14.826775678214954
       },
       {
         "county": "台北市",
         "town": "士林區",
         "target": 1.669135,
-        "actual": 1.57366,
-        "ratio": 0.9427997136241227,
-        "logGap": -0.058901411670607286,
-        "relativeGapPct": -5.720028637587726
+        "actual": 1.573657,
+        "ratio": 0.9427979162859805,
+        "logGap": -0.058903318056268465,
+        "relativeGapPct": -5.720208371401947
       },
       {
         "county": "台北市",
         "town": "內湖區",
         "target": 1.78085,
-        "actual": 1.784195,
-        "ratio": 1.0018783165342393,
-        "logGap": 0.0018765547035767076,
-        "relativeGapPct": 0.18783165342393104
+        "actual": 1.784192,
+        "ratio": 1.0018766319454193,
+        "logGap": 0.0018748732716019315,
+        "relativeGapPct": 0.1876631945419316
       }
     ],
     "hengchun_south": [
@@ -324,46 +328,46 @@
         "county": "屏東縣",
         "town": "恆春鎮",
         "target": 3.0,
-        "actual": 0.995969,
-        "ratio": 0.3319896666666667,
-        "logGap": -1.1026514350480177,
-        "relativeGapPct": -66.80103333333334
+        "actual": 0.995428,
+        "ratio": 0.33180933333333335,
+        "logGap": -1.103194772226199,
+        "relativeGapPct": -66.81906666666666
       },
       {
         "county": "屏東縣",
         "town": "滿州鄉",
         "target": 2.540288,
-        "actual": 1.063956,
-        "ratio": 0.4188328252544593,
-        "logGap": -0.8702834237486107,
-        "relativeGapPct": -58.11671747455407
+        "actual": 1.064364,
+        "ratio": 0.4189934369646277,
+        "logGap": -0.869900022751582,
+        "relativeGapPct": -58.10065630353722
       },
       {
         "county": "屏東縣",
         "town": "車城鄉",
         "target": 3.0,
-        "actual": 1.270706,
-        "ratio": 0.42356866666666665,
-        "logGap": -0.8590396371440276,
-        "relativeGapPct": -57.64313333333333
+        "actual": 1.27409,
+        "ratio": 0.42469666666666667,
+        "logGap": -0.8563800903712104,
+        "relativeGapPct": -57.53033333333333
       },
       {
         "county": "屏東縣",
         "town": "牡丹鄉",
         "target": 1.959842,
-        "actual": 1.11875,
-        "ratio": 0.5708368327650902,
-        "logGap": -0.5606518671412583,
-        "relativeGapPct": -42.91631672349098
+        "actual": 1.126402,
+        "ratio": 0.5747412291399,
+        "logGap": -0.5538353757599399,
+        "relativeGapPct": -42.52587708601
       },
       {
         "county": "屏東縣",
         "town": "枋山鄉",
         "target": 3.0,
-        "actual": 1.495822,
-        "ratio": 0.49860733333333335,
-        "logGap": -0.695936400152196,
-        "relativeGapPct": -50.13926666666666
+        "actual": 1.494381,
+        "ratio": 0.498127,
+        "logGap": -0.6969002143892562,
+        "relativeGapPct": -50.1873
       }
     ],
     "east_central_interior": [
@@ -371,46 +375,46 @@
         "county": "花蓮縣",
         "town": "秀林鄉",
         "target": 0.9,
-        "actual": 0.556336,
-        "ratio": 0.6181511111111112,
-        "logGap": -0.48102233505267816,
-        "relativeGapPct": -38.18488888888888
+        "actual": 0.556335,
+        "ratio": 0.61815,
+        "logGap": -0.48102413252920107,
+        "relativeGapPct": -38.185
       },
       {
         "county": "花蓮縣",
         "town": "萬榮鄉",
         "target": 0.9,
-        "actual": 0.461265,
-        "ratio": 0.5125166666666666,
-        "logGap": -0.668422048173145,
-        "relativeGapPct": -48.748333333333335
+        "actual": 0.461264,
+        "ratio": 0.5125155555555555,
+        "logGap": -0.6684242161266727,
+        "relativeGapPct": -48.74844444444445
       },
       {
         "county": "花蓮縣",
         "town": "卓溪鄉",
         "target": 0.9,
-        "actual": 0.672392,
-        "ratio": 0.7471022222222222,
-        "logGap": -0.2915532595405806,
-        "relativeGapPct": -25.28977777777778
+        "actual": 0.67239,
+        "ratio": 0.7471,
+        "logGap": -0.2915562340003815,
+        "relativeGapPct": -25.290000000000003
       },
       {
         "county": "台東縣",
         "town": "海端鄉",
         "target": 1.0,
-        "actual": 0.98209,
-        "ratio": 0.98209,
-        "logGap": -0.018072325132746786,
-        "relativeGapPct": -1.7909999999999981
+        "actual": 0.982089,
+        "ratio": 0.982089,
+        "logGap": -0.018073343369883043,
+        "relativeGapPct": -1.791100000000001
       },
       {
         "county": "台東縣",
         "town": "延平鄉",
         "target": 1.0,
-        "actual": 1.292632,
-        "ratio": 1.292632,
-        "logGap": 0.2566804498453472,
-        "relativeGapPct": 29.2632
+        "actual": 1.29263,
+        "ratio": 1.29263,
+        "logGap": 0.25667890261338383,
+        "relativeGapPct": 29.262999999999995
       }
     ],
     "west_inflated_belt": [
@@ -418,73 +422,73 @@
         "county": "高雄市",
         "town": "路竹區",
         "target": 1.0,
-        "actual": 2.021401,
-        "ratio": 2.021401,
-        "logGap": 0.7037908353649417,
-        "relativeGapPct": 102.1401
+        "actual": 2.021393,
+        "ratio": 2.021393,
+        "logGap": 0.7037868777059565,
+        "relativeGapPct": 102.13930000000002
       },
       {
         "county": "高雄市",
         "town": "湖內區",
         "target": 1.0,
-        "actual": 1.97172,
-        "ratio": 1.97172,
-        "logGap": 0.6789062582696028,
-        "relativeGapPct": 97.172
+        "actual": 1.971678,
+        "ratio": 1.971678,
+        "logGap": 0.6788849568437759,
+        "relativeGapPct": 97.1678
       },
       {
         "county": "高雄市",
         "town": "岡山區",
         "target": 1.0,
-        "actual": 1.931067,
-        "ratio": 1.931067,
-        "logGap": 0.6580726998926104,
-        "relativeGapPct": 93.1067
+        "actual": 1.931064,
+        "ratio": 1.931064,
+        "logGap": 0.6580711463461355,
+        "relativeGapPct": 93.1064
       },
       {
         "county": "台南市",
         "town": "仁德區",
         "target": 1.0,
-        "actual": 1.985719,
-        "ratio": 1.985719,
-        "logGap": 0.6859810651792341,
-        "relativeGapPct": 98.5719
+        "actual": 1.985716,
+        "ratio": 1.985716,
+        "logGap": 0.6859795543903127,
+        "relativeGapPct": 98.5716
       },
       {
         "county": "台南市",
         "town": "歸仁區",
         "target": 1.0,
-        "actual": 1.98146,
-        "ratio": 1.98146,
-        "logGap": 0.6838339467173711,
-        "relativeGapPct": 98.146
+        "actual": 1.981457,
+        "ratio": 1.981457,
+        "logGap": 0.6838324326811195,
+        "relativeGapPct": 98.1457
       },
       {
         "county": "台南市",
         "town": "北區",
         "target": 1.0,
-        "actual": 1.896591,
-        "ratio": 1.896591,
-        "logGap": 0.6400580641224757,
-        "relativeGapPct": 89.6591
+        "actual": 1.896587,
+        "ratio": 1.896587,
+        "logGap": 0.640055955073019,
+        "relativeGapPct": 89.6587
       },
       {
         "county": "台南市",
         "town": "安南區",
         "target": 1.080297,
-        "actual": 2.131084,
-        "ratio": 1.9726834379804812,
-        "logGap": 0.6793947671226092,
-        "relativeGapPct": 97.26834379804812
+        "actual": 2.13108,
+        "ratio": 1.9726797352950158,
+        "logGap": 0.6793928901418077,
+        "relativeGapPct": 97.26797352950159
       },
       {
         "county": "台南市",
         "town": "七股區",
         "target": 1.085887,
-        "actual": 2.161299,
-        "ratio": 1.9903535082379658,
-        "logGap": 0.6883122652905066,
-        "relativeGapPct": 99.03535082379658
+        "actual": 2.161295,
+        "ratio": 1.9903498246134266,
+        "logGap": 0.6883104145499559,
+        "relativeGapPct": 99.03498246134265
       }
     ]
   },
@@ -493,181 +497,181 @@
       "county": "高雄市",
       "town": "路竹區",
       "target": 1.0,
-      "actual": 2.021401,
-      "ratio": 2.021401,
-      "logGap": 0.7037908353649417,
-      "relativeGapPct": 102.1401
+      "actual": 2.021393,
+      "ratio": 2.021393,
+      "logGap": 0.7037868777059565,
+      "relativeGapPct": 102.13930000000002
     },
     {
       "county": "台南市",
       "town": "七股區",
       "target": 1.085887,
-      "actual": 2.161299,
-      "ratio": 1.9903535082379658,
-      "logGap": 0.6883122652905066,
-      "relativeGapPct": 99.03535082379658
+      "actual": 2.161295,
+      "ratio": 1.9903498246134266,
+      "logGap": 0.6883104145499559,
+      "relativeGapPct": 99.03498246134265
     },
     {
       "county": "台南市",
       "town": "仁德區",
       "target": 1.0,
-      "actual": 1.985719,
-      "ratio": 1.985719,
-      "logGap": 0.6859810651792341,
-      "relativeGapPct": 98.5719
+      "actual": 1.985716,
+      "ratio": 1.985716,
+      "logGap": 0.6859795543903127,
+      "relativeGapPct": 98.5716
     },
     {
       "county": "台南市",
       "town": "歸仁區",
       "target": 1.0,
-      "actual": 1.98146,
-      "ratio": 1.98146,
-      "logGap": 0.6838339467173711,
-      "relativeGapPct": 98.146
+      "actual": 1.981457,
+      "ratio": 1.981457,
+      "logGap": 0.6838324326811195,
+      "relativeGapPct": 98.1457
     },
     {
       "county": "台南市",
       "town": "安南區",
       "target": 1.080297,
-      "actual": 2.131084,
-      "ratio": 1.9726834379804812,
-      "logGap": 0.6793947671226092,
-      "relativeGapPct": 97.26834379804812
+      "actual": 2.13108,
+      "ratio": 1.9726797352950158,
+      "logGap": 0.6793928901418077,
+      "relativeGapPct": 97.26797352950159
     },
     {
       "county": "高雄市",
       "town": "湖內區",
       "target": 1.0,
-      "actual": 1.97172,
-      "ratio": 1.97172,
-      "logGap": 0.6789062582696028,
-      "relativeGapPct": 97.172
+      "actual": 1.971678,
+      "ratio": 1.971678,
+      "logGap": 0.6788849568437759,
+      "relativeGapPct": 97.1678
     },
     {
       "county": "高雄市",
       "town": "橋頭區",
       "target": 1.0,
-      "actual": 1.932357,
-      "ratio": 1.932357,
-      "logGap": 0.6587405013288186,
-      "relativeGapPct": 93.23570000000001
+      "actual": 1.932354,
+      "ratio": 1.932354,
+      "logGap": 0.6587389488194587,
+      "relativeGapPct": 93.23539999999998
     },
     {
       "county": "高雄市",
       "town": "岡山區",
       "target": 1.0,
-      "actual": 1.931067,
-      "ratio": 1.931067,
-      "logGap": 0.6580726998926104,
-      "relativeGapPct": 93.1067
+      "actual": 1.931064,
+      "ratio": 1.931064,
+      "logGap": 0.6580711463461355,
+      "relativeGapPct": 93.1064
     },
     {
       "county": "台南市",
       "town": "南區",
       "target": 1.20263,
-      "actual": 2.302024,
-      "ratio": 1.9141581367502887,
-      "logGap": 0.6492779106994845,
-      "relativeGapPct": 91.41581367502887
+      "actual": 2.30202,
+      "ratio": 1.914154810706535,
+      "logGap": 0.6492761730966294,
+      "relativeGapPct": 91.4154810706535
     },
     {
       "county": "台南市",
       "town": "中西區",
       "target": 1.0,
-      "actual": 1.908146,
-      "ratio": 1.908146,
-      "logGap": 0.6461320900147378,
-      "relativeGapPct": 90.81459999999998
+      "actual": 1.908143,
+      "ratio": 1.908143,
+      "logGap": 0.646130517806763,
+      "relativeGapPct": 90.81429999999999
     },
     {
       "county": "高雄市",
       "town": "燕巢區",
       "target": 1.0,
-      "actual": 1.903583,
-      "ratio": 1.903583,
-      "logGap": 0.6437378997773686,
-      "relativeGapPct": 90.3583
+      "actual": 1.90358,
+      "ratio": 1.90358,
+      "logGap": 0.6437363238007162,
+      "relativeGapPct": 90.358
     },
     {
       "county": "台南市",
       "town": "東區",
       "target": 1.0,
-      "actual": 1.903569,
-      "ratio": 1.903569,
-      "logGap": 0.6437305451984078,
-      "relativeGapPct": 90.35690000000001
+      "actual": 1.903566,
+      "ratio": 1.903566,
+      "logGap": 0.6437289692101646,
+      "relativeGapPct": 90.35660000000001
     },
     {
       "county": "台南市",
       "town": "北區",
       "target": 1.0,
-      "actual": 1.896591,
-      "ratio": 1.896591,
-      "logGap": 0.6400580641224757,
-      "relativeGapPct": 89.6591
+      "actual": 1.896587,
+      "ratio": 1.896587,
+      "logGap": 0.640055955073019,
+      "relativeGapPct": 89.6587
     },
     {
       "county": "高雄市",
       "town": "阿蓮區",
       "target": 1.0,
-      "actual": 1.86403,
-      "ratio": 1.86403,
-      "logGap": 0.6227408105544865,
-      "relativeGapPct": 86.403
+      "actual": 1.864027,
+      "ratio": 1.864027,
+      "logGap": 0.622739201137034,
+      "relativeGapPct": 86.40270000000001
     },
     {
       "county": "台南市",
       "town": "永康區",
       "target": 1.0,
-      "actual": 1.859939,
-      "ratio": 1.859939,
-      "logGap": 0.6205436914883945,
-      "relativeGapPct": 85.9939
+      "actual": 1.859935,
+      "ratio": 1.859935,
+      "logGap": 0.6205415408779167,
+      "relativeGapPct": 85.99349999999998
     },
     {
       "county": "高雄市",
       "town": "仁武區",
       "target": 1.0,
-      "actual": 1.855256,
-      "ratio": 1.855256,
-      "logGap": 0.6180226919283661,
-      "relativeGapPct": 85.5256
+      "actual": 1.855253,
+      "ratio": 1.855253,
+      "logGap": 0.6180210748995434,
+      "relativeGapPct": 85.5253
     },
     {
       "county": "高雄市",
       "town": "大社區",
       "target": 1.0,
-      "actual": 1.853082,
-      "ratio": 1.853082,
-      "logGap": 0.6168501988875176,
-      "relativeGapPct": 85.30819999999999
+      "actual": 1.853079,
+      "ratio": 1.853079,
+      "logGap": 0.6168485799616263,
+      "relativeGapPct": 85.30789999999999
     },
     {
       "county": "台南市",
       "town": "關廟區",
       "target": 1.0,
-      "actual": 1.852442,
-      "ratio": 1.852442,
-      "logGap": 0.6165047686561312,
-      "relativeGapPct": 85.24419999999999
+      "actual": 1.852439,
+      "ratio": 1.852439,
+      "logGap": 0.616503149170917,
+      "relativeGapPct": 85.2439
     },
     {
       "county": "高雄市",
       "town": "大樹區",
       "target": 1.0,
-      "actual": 1.837427,
-      "ratio": 1.837427,
-      "logGap": 0.6083662234245246,
-      "relativeGapPct": 83.74269999999999
+      "actual": 1.837425,
+      "ratio": 1.837425,
+      "logGap": 0.6083651349453152,
+      "relativeGapPct": 83.7425
     },
     {
       "county": "台南市",
       "town": "西港區",
       "target": 1.0,
-      "actual": 1.827334,
-      "ratio": 1.827334,
-      "logGap": 0.6028580740427717,
-      "relativeGapPct": 82.7334
+      "actual": 1.827331,
+      "ratio": 1.827331,
+      "logGap": 0.6028564323054305,
+      "relativeGapPct": 82.73310000000001
     }
   ],
   "topUnderTarget": [
@@ -675,10 +679,10 @@
       "county": "屏東縣",
       "town": "恆春鎮",
       "target": 3.0,
-      "actual": 0.995969,
-      "ratio": 0.3319896666666667,
-      "logGap": -1.1026514350480177,
-      "relativeGapPct": -66.80103333333334
+      "actual": 0.995428,
+      "ratio": 0.33180933333333335,
+      "logGap": -1.103194772226199,
+      "relativeGapPct": -66.81906666666666
     },
     {
       "county": "台中市",
@@ -711,19 +715,19 @@
       "county": "屏東縣",
       "town": "滿州鄉",
       "target": 2.540288,
-      "actual": 1.063956,
-      "ratio": 0.4188328252544593,
-      "logGap": -0.8702834237486107,
-      "relativeGapPct": -58.11671747455407
+      "actual": 1.064364,
+      "ratio": 0.4189934369646277,
+      "logGap": -0.869900022751582,
+      "relativeGapPct": -58.10065630353722
     },
     {
       "county": "屏東縣",
       "town": "車城鄉",
       "target": 3.0,
-      "actual": 1.270706,
-      "ratio": 0.42356866666666665,
-      "logGap": -0.8590396371440276,
-      "relativeGapPct": -57.64313333333333
+      "actual": 1.27409,
+      "ratio": 0.42469666666666667,
+      "logGap": -0.8563800903712104,
+      "relativeGapPct": -57.53033333333333
     },
     {
       "county": "台中市",
@@ -738,73 +742,73 @@
       "county": "台中市",
       "town": "東勢區",
       "target": 1.0,
-      "actual": 0.493875,
-      "ratio": 0.493875,
-      "logGap": -0.7054728302505823,
-      "relativeGapPct": -50.6125
+      "actual": 0.493874,
+      "ratio": 0.493874,
+      "logGap": -0.7054748550564793,
+      "relativeGapPct": -50.61260000000001
     },
     {
       "county": "屏東縣",
       "town": "枋山鄉",
       "target": 3.0,
-      "actual": 1.495822,
-      "ratio": 0.49860733333333335,
-      "logGap": -0.695936400152196,
-      "relativeGapPct": -50.13926666666666
+      "actual": 1.494381,
+      "ratio": 0.498127,
+      "logGap": -0.6969002143892562,
+      "relativeGapPct": -50.1873
     },
     {
       "county": "台中市",
       "town": "北屯區",
       "target": 1.0,
-      "actual": 0.500288,
-      "ratio": 0.500288,
-      "logGap": -0.6925713463842719,
-      "relativeGapPct": -49.9712
+      "actual": 0.500287,
+      "ratio": 0.500287,
+      "logGap": -0.6925733452349326,
+      "relativeGapPct": -49.9713
     },
     {
       "county": "台中市",
       "town": "東區",
       "target": 1.0,
-      "actual": 0.508137,
-      "ratio": 0.508137,
-      "logGap": -0.6770041827227586,
-      "relativeGapPct": -49.1863
+      "actual": 0.508136,
+      "ratio": 0.508136,
+      "logGap": -0.677006150697899,
+      "relativeGapPct": -49.1864
     },
     {
       "county": "彰化縣",
       "town": "彰化市",
       "target": 1.0,
-      "actual": 0.50814,
-      "ratio": 0.50814,
-      "logGap": -0.6769982788205743,
-      "relativeGapPct": -49.18599999999999
+      "actual": 0.508139,
+      "ratio": 0.508139,
+      "logGap": -0.6770002467840962,
+      "relativeGapPct": -49.186099999999996
     },
     {
       "county": "基隆市",
       "town": "中正區",
       "target": 3.0,
-      "actual": 1.525678,
-      "ratio": 0.5085593333333334,
-      "logGap": -0.6761733872457243,
-      "relativeGapPct": -49.14406666666666
+      "actual": 1.525676,
+      "ratio": 0.5085586666666667,
+      "logGap": -0.6761746981391834,
+      "relativeGapPct": -49.14413333333333
     },
     {
       "county": "花蓮縣",
       "town": "萬榮鄉",
       "target": 0.9,
-      "actual": 0.461265,
-      "ratio": 0.5125166666666666,
-      "logGap": -0.668422048173145,
-      "relativeGapPct": -48.748333333333335
+      "actual": 0.461264,
+      "ratio": 0.5125155555555555,
+      "logGap": -0.6684242161266727,
+      "relativeGapPct": -48.74844444444445
     },
     {
       "county": "彰化縣",
       "town": "社頭鄉",
       "target": 0.9,
-      "actual": 0.46575,
-      "ratio": 0.5175,
-      "logGap": -0.658745753842613,
-      "relativeGapPct": -48.25000000000001
+      "actual": 0.465749,
+      "ratio": 0.517498888888889,
+      "logGap": -0.6587479009195286,
+      "relativeGapPct": -48.2501111111111
     },
     {
       "county": "台中市",
@@ -819,37 +823,37 @@
       "county": "台中市",
       "town": "烏日區",
       "target": 1.0,
-      "actual": 0.520988,
-      "ratio": 0.520988,
-      "logGap": -0.6520282701235838,
-      "relativeGapPct": -47.9012
+      "actual": 0.520987,
+      "ratio": 0.520987,
+      "logGap": -0.652030189555432,
+      "relativeGapPct": -47.9013
     },
     {
       "county": "基隆市",
       "town": "中山區",
       "target": 3.0,
-      "actual": 1.566762,
-      "ratio": 0.522254,
-      "logGap": -0.6496012194077275,
-      "relativeGapPct": -47.7746
+      "actual": 1.566759,
+      "ratio": 0.522253,
+      "logGap": -0.6496031341866616,
+      "relativeGapPct": -47.7747
     },
     {
       "county": "彰化縣",
       "town": "花壇鄉",
       "target": 1.0,
-      "actual": 0.525092,
-      "ratio": 0.525092,
-      "logGap": -0.6441817936476767,
-      "relativeGapPct": -47.4908
+      "actual": 0.525091,
+      "ratio": 0.525091,
+      "logGap": -0.6441836980776666,
+      "relativeGapPct": -47.4909
     },
     {
       "county": "台中市",
       "town": "石岡區",
       "target": 1.0,
-      "actual": 0.527366,
-      "ratio": 0.527366,
-      "logGap": -0.6398604743386228,
-      "relativeGapPct": -47.2634
+      "actual": 0.527365,
+      "ratio": 0.527365,
+      "logGap": -0.6398623705567107,
+      "relativeGapPct": -47.2635
     }
   ],
   "closestToTarget": [
@@ -866,172 +870,172 @@
       "county": "台北市",
       "town": "內湖區",
       "target": 1.78085,
-      "actual": 1.784195,
-      "ratio": 1.0018783165342393,
-      "logGap": 0.0018765547035767076,
-      "relativeGapPct": 0.18783165342393104
+      "actual": 1.784192,
+      "ratio": 1.0018766319454193,
+      "logGap": 0.0018748732716019315,
+      "relativeGapPct": 0.1876631945419316
     },
     {
       "county": "苗栗縣",
       "town": "造橋鄉",
       "target": 1.0,
-      "actual": 1.002816,
-      "ratio": 1.002816,
-      "logGap": 0.002812042499806107,
-      "relativeGapPct": 0.28159999999999297
+      "actual": 1.002814,
+      "ratio": 1.002814,
+      "logGap": 0.0028100481140023088,
+      "relativeGapPct": 0.2814000000000094
     },
     {
       "county": "新北市",
       "town": "平溪區",
       "target": 1.0,
-      "actual": 1.003432,
-      "ratio": 1.003432,
-      "logGap": 0.0034261241281569182,
-      "relativeGapPct": 0.34320000000001016
+      "actual": 1.003431,
+      "ratio": 1.003431,
+      "logGap": 0.003425127547921855,
+      "relativeGapPct": 0.3430999999999962
     },
     {
       "county": "新竹縣",
       "town": "尖石鄉",
       "target": 1.0,
-      "actual": 0.995816,
-      "ratio": 0.995816,
-      "logGap": -0.004192777419704887,
-      "relativeGapPct": -0.41839999999999655
+      "actual": 0.995814,
+      "ratio": 0.995814,
+      "logGap": -0.004194785824880606,
+      "relativeGapPct": -0.4186000000000023
     },
     {
       "county": "宜蘭縣",
       "town": "壯圍鄉",
       "target": 1.656794,
-      "actual": 1.666272,
-      "ratio": 1.0057206870618798,
-      "logGap": 0.0057043860706822705,
-      "relativeGapPct": 0.5720687061879781
+      "actual": 1.66627,
+      "ratio": 1.005719479911202,
+      "logGap": 0.005703185785734517,
+      "relativeGapPct": 0.5719479911201919
     },
     {
       "county": "雲林縣",
       "town": "元長鄉",
       "target": 1.0,
-      "actual": 0.990209,
-      "ratio": 0.990209,
-      "logGap": -0.009839247023205178,
-      "relativeGapPct": -0.9790999999999994
+      "actual": 0.990208,
+      "ratio": 0.990208,
+      "logGap": -0.009840256911526707,
+      "relativeGapPct": -0.9792000000000023
     },
     {
       "county": "南投縣",
       "town": "鹿谷鄉",
       "target": 0.35,
-      "actual": 0.354059,
-      "ratio": 1.0115971428571429,
-      "logGap": 0.011530411429635887,
-      "relativeGapPct": 1.1597142857142861
+      "actual": 0.354058,
+      "ratio": 1.0115942857142857,
+      "logGap": 0.011527587037621521,
+      "relativeGapPct": 1.1594285714285668
     },
     {
       "county": "南投縣",
       "town": "草屯鎮",
       "target": 0.35,
-      "actual": 0.345935,
-      "ratio": 0.9883857142857143,
-      "logGap": -0.011682258345550383,
-      "relativeGapPct": -1.1614285714285688
+      "actual": 0.345934,
+      "ratio": 0.9883828571428572,
+      "logGap": -0.011685149066192524,
+      "relativeGapPct": -1.161714285714277
     },
     {
       "county": "宜蘭縣",
       "town": "頭城鎮",
       "target": 1.544332,
-      "actual": 1.525221,
-      "ratio": 0.9876250702569136,
-      "logGap": -0.012452136802005331,
-      "relativeGapPct": -1.2374929743086405
+      "actual": 1.525219,
+      "ratio": 0.9876237751985972,
+      "logGap": -0.012453448088245892,
+      "relativeGapPct": -1.2376224801402769
     },
     {
       "county": "台東縣",
       "town": "海端鄉",
       "target": 1.0,
-      "actual": 0.98209,
-      "ratio": 0.98209,
-      "logGap": -0.018072325132746786,
-      "relativeGapPct": -1.7909999999999981
+      "actual": 0.982089,
+      "ratio": 0.982089,
+      "logGap": -0.018073343369883043,
+      "relativeGapPct": -1.791100000000001
     },
     {
       "county": "台東縣",
       "town": "太麻里鄉",
       "target": 1.437245,
-      "actual": 1.464019,
-      "ratio": 1.0186286958730069,
-      "logGap": 0.018457306947658535,
-      "relativeGapPct": 1.8628695873006862
+      "actual": 1.464008,
+      "ratio": 1.018621042341424,
+      "logGap": 0.01844979335574154,
+      "relativeGapPct": 1.8621042341423921
     },
     {
       "county": "宜蘭縣",
       "town": "大同鄉",
       "target": 1.0,
-      "actual": 0.979953,
-      "ratio": 0.979953,
-      "logGap": -0.020250667651271377,
-      "relativeGapPct": -2.0047000000000037
+      "actual": 0.979952,
+      "ratio": 0.979952,
+      "logGap": -0.020251688108895514,
+      "relativeGapPct": -2.0047999999999955
     },
     {
       "county": "嘉義縣",
       "town": "大埔鄉",
       "target": 1.0,
-      "actual": 1.021038,
-      "ratio": 1.021038,
-      "logGap": 0.02081975690326071,
-      "relativeGapPct": 2.103799999999989
+      "actual": 1.021037,
+      "ratio": 1.021037,
+      "logGap": 0.020818777507303248,
+      "relativeGapPct": 2.1036999999999972
     },
     {
       "county": "台東縣",
       "town": "關山鎮",
       "target": 1.0,
-      "actual": 0.976437,
-      "ratio": 0.976437,
-      "logGap": -0.023845046875690657,
-      "relativeGapPct": -2.3563
+      "actual": 0.976435,
+      "ratio": 0.976435,
+      "logGap": -0.0238470951410147,
+      "relativeGapPct": -2.3564999999999947
     },
     {
       "county": "苗栗縣",
       "town": "三灣鄉",
       "target": 1.0,
-      "actual": 0.976123,
-      "ratio": 0.976123,
-      "logGap": -0.02416667591931221,
-      "relativeGapPct": -2.3877000000000037
+      "actual": 0.976122,
+      "ratio": 0.976122,
+      "logGap": -0.02416770038089354,
+      "relativeGapPct": -2.3877999999999955
     },
     {
       "county": "宜蘭縣",
       "town": "羅東鎮",
       "target": 1.0,
-      "actual": 1.024938,
-      "ratio": 1.024938,
-      "logGap": 0.024632122956032315,
-      "relativeGapPct": 2.4937999999999905
+      "actual": 1.024937,
+      "ratio": 1.024937,
+      "logGap": 0.024631147286784272,
+      "relativeGapPct": 2.4936999999999987
     },
     {
       "county": "苗栗縣",
       "town": "頭份市",
       "target": 1.0,
-      "actual": 1.025055,
-      "ratio": 1.025055,
-      "logGap": 0.024746269687389136,
-      "relativeGapPct": 2.505500000000005
+      "actual": 1.025053,
+      "ratio": 1.025053,
+      "logGap": 0.024744318570667424,
+      "relativeGapPct": 2.505299999999999
     },
     {
       "county": "新竹縣",
       "town": "北埔鄉",
       "target": 1.0,
-      "actual": 1.02649,
-      "ratio": 1.02649,
-      "logGap": 0.026145215588191082,
-      "relativeGapPct": 2.6489999999999903
+      "actual": 1.026488,
+      "ratio": 1.026488,
+      "logGap": 0.026143267199070657,
+      "relativeGapPct": 2.6488000000000067
     },
     {
       "county": "高雄市",
       "town": "那瑪夏區",
       "target": 1.0,
-      "actual": 0.97394,
-      "ratio": 0.97394,
-      "logGap": -0.02640557887977151,
-      "relativeGapPct": -2.605999999999997
+      "actual": 0.973947,
+      "ratio": 0.973947,
+      "logGap": -0.026398391604534284,
+      "relativeGapPct": -2.6052999999999993
     }
   ],
   "missingObservationRows": []
