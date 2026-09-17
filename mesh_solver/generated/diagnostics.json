@@ -1,7 +1,7 @@
 {
   "meshIdentity": {
     "version": 2,
-    "method": "adaptive-shared-control-south-cluster-v8",
+    "method": "adaptive-shared-control-terminal-coast-v9",
     "targetMaxColatDeg": 115
   },
   "meshMeta": {},
@@ -15,10 +15,12 @@
     "residualAcceptedIterations": 40,
     "residualAcceptedMoves": 20151,
     "southInterfaceAcceptedMoves": 24,
-    "southClusterRatio": 0.4348942045522144,
+    "southClusterRatio": 0.4919149395836948,
+    "southCoastAcceptedMoves": 79,
+    "southCoastSweeps": 18,
     "vertices": 6040,
     "triangles": 11296,
-    "nantouFactor": 0.350054,
+    "nantouFactor": 0.349256,
     "rawArcPoints": 45355,
     "controlArcPoints": 7997,
     "simplifyTolerance": 0.004
@@ -68,7 +70,7 @@
     },
     "diagnostics": {
       "type": "dict",
-      "length": 16,
+      "length": 18,
       "keys": [
         "meanAbsLogRatio",
         "maxAbsLogRatio",
@@ -80,6 +82,8 @@
         "residualAcceptedMoves",
         "southInterfaceAcceptedMoves",
         "southClusterRatio",
+        "southCoastAcceptedMoves",
+        "southCoastSweeps",
         "vertices",
         "triangles",
         "nantouFactor",
