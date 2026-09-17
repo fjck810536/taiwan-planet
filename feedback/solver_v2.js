@@ -5,7 +5,7 @@ import {
   sphericalTriangleArea
 } from "./geo.js";
 
-export const TARGET_MAX_COLAT_DEG = 122;
+export const TARGET_MAX_COLAT_DEG = 128;
 export const FINAL_AUDIT_EDGE_DEG = 1.5;
 const QUICK_AUDIT_EDGE_DEG = 4.5;
 const NANTOU_AREA_RETAIN = 1.00;
@@ -541,6 +541,6 @@ export function buildSolvedProjection(features) {
 
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "outline122+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
+  p.policyVersion = "outline128+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
   return p;
 }
