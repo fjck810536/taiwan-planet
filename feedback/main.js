@@ -1,6 +1,6 @@
 import { feature as topoFeature } from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
 import { sanitizeFeature } from "./geo.js";
-import { buildSolvedProjection, auditProjectedAreas, FINAL_AUDIT_EDGE_DEG, TARGET_MAX_COLAT_DEG } from "./solver.js";
+import { buildSolvedProjection, auditProjectedAreas, FINAL_AUDIT_EDGE_DEG, TARGET_MAX_COLAT_DEG } from "./solver_v2.js";
 import { createTaiwanView } from "./view.js";
 
 const DATA_URL = "https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/towns-10t.json";
