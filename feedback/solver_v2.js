@@ -18,7 +18,7 @@ const POLICY_WARP_STRENGTH = 0.88;
 const POLICY_SIGMA_MULTIPLIER = 2.35;
 const NANTOU_SIGMA_MULTIPLIER = 1.35;
 const NANTOU_BLEND_WEIGHT = 1.80;
-const FEEDBACK_PASSES = 4;
+const FEEDBACK_PASSES = 8;
 const FEEDBACK_DONOR_THRESHOLD = 1.20;
 const FEEDBACK_MAX_CONTROL_CUT = 0.35;
 const FEEDBACK_MIN_CONTROL_FACTOR = 0.12;
@@ -368,6 +368,6 @@ export function buildSolvedProjection(features) {
   }
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "checkpointA-nantou-target-1";
+  p.policyVersion = "checkpointA-nantou-target-1-feedback8";
   return p;
 }
