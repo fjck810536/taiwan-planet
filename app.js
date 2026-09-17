@@ -240,20 +240,29 @@ const pointers = new Map();
 let lastSingle = null;
 let pinchStartDistance = 0;
 let pinchStartCameraZ = camera.position.z;
+let twistStartAngle = 0;
+let twistStartWorldZ = world.rotation.z;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const angleBetween = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+const normalizeAngle = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 const markInteraction = () => document.body.classList.add("interacted");
+
+function beginTwoFingerGesture() {
+  const [a, b] = [...pointers.values()];
+  pinchStartDistance = Math.max(1, distance(a, b));
+  pinchStartCameraZ = camera.position.z;
+  twistStartAngle = angleBetween(a, b);
+  twistStartWorldZ = world.rotation.z;
+  lastSingle = null;
+}
+
 function onPointerDown(e) {
   e.preventDefault(); markInteraction();
   renderer.domElement.setPointerCapture?.(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   document.body.classList.add("dragging");
   if (pointers.size === 1) lastSingle = { x: e.clientX, y: e.clientY };
-  else if (pointers.size === 2) {
-    const [a, b] = [...pointers.values()];
-    pinchStartDistance = Math.max(1, distance(a, b));
-    pinchStartCameraZ = camera.position.z;
-    lastSingle = null;
-  }
+  else if (pointers.size === 2) beginTwoFingerGesture();
 }
 function onPointerMove(e) {
   if (!pointers.has(e.pointerId)) return;
@@ -268,14 +277,28 @@ function onPointerMove(e) {
     lastSingle = { ...p };
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
-    const current = Math.max(1, distance(a, b));
-    camera.position.z = THREE.MathUtils.clamp(pinchStartCameraZ * (pinchStartDistance / current), MIN_CAMERA_Z, MAX_CAMERA_Z);
+    const currentDistance = Math.max(1, distance(a, b));
+    const currentAngle = angleBetween(a, b);
+    const twistDelta = normalizeAngle(currentAngle - twistStartAngle);
+    camera.position.z = THREE.MathUtils.clamp(
+      pinchStartCameraZ * (pinchStartDistance / currentDistance),
+      MIN_CAMERA_Z,
+      MAX_CAMERA_Z
+    );
+    world.rotation.z = twistStartWorldZ + twistDelta;
   }
 }
 function onPointerUp(e) {
-  e.preventDefault(); pointers.delete(e.pointerId);
-  if (!pointers.size) { lastSingle = null; document.body.classList.remove("dragging"); }
-  else if (pointers.size === 1) lastSingle = { ...[...pointers.values()][0] };
+  e.preventDefault();
+  pointers.delete(e.pointerId);
+  if (!pointers.size) {
+    lastSingle = null;
+    document.body.classList.remove("dragging");
+  } else if (pointers.size === 1) {
+    lastSingle = { ...[...pointers.values()][0] };
+  } else if (pointers.size === 2) {
+    beginTwoFingerGesture();
+  }
 }
 ["pointerdown", "pointermove", "pointerup", "pointercancel"].forEach(type => {
   renderer.domElement.addEventListener(type, type === "pointerdown" ? onPointerDown : type === "pointermove" ? onPointerMove : onPointerUp, { passive: false });
