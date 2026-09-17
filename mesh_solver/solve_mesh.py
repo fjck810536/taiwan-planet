@@ -290,7 +290,7 @@ def main():
     coast_mask=np.zeros(nvert,dtype=bool); coast_mask[list(coast_vertices)]=True
     init_tri_area=np.array([abs(tri_signed2(p0,*tr[:3])) for tr in triangles])
 
-    cfg=policy['solver']; alpha=float(cfg['area_alpha']); max_step=float(cfg['max_local_scale_step']); smooth=float(cfg['smooth_strength']); coast_mult=float(cfg['coast_smooth_multiplier']); anchor_strength=float(cfg['anchor_strength']); min_ratio=float(cfg['min_triangle_area_ratio']); iterations=int(cfg['iterations']); report_every=int(cfg['report_every'])
+    cfg=policy['solver']; alpha=float(cfg['area_alpha']); max_step=float(cfg['max_local_scale_step']); smooth=float(cfg['smooth_strength']); coast_mult=float(cfg['coast_smooth_multiplier']); min_ratio=float(cfg['min_triangle_area_ratio']); iterations=int(cfg['iterations']); report_every=int(cfg['report_every'])
 
     def current_areas(pos):
         units=[plane_to_unit(q) for q in pos]
@@ -304,6 +304,32 @@ def main():
 
     ar,err,meanerr,maxerr=area_error(p)
     print(f'initial mean|log ratio|={meanerr:.4f} max={maxerr:.4f}',flush=True)
+
+    nantou_ids=[i for i,t in enumerate(towns) if t['county']==NANTOU]
+    nantou_vids=np.unique(np.concatenate([np.asarray(towns[i]['vids'],dtype=int) for i in nantou_ids]))
+    nantou_vid_set=set(map(int,nantou_vids))
+    affected_by_nantou=[j for j,(a,b,c,ti) in enumerate(triangles) if a in nantou_vid_set or b in nantou_vid_set or c in nantou_vid_set]
+    def group_actual_factor(pos, ids):
+        ga=current_areas(pos); return (ga[ids].sum()/ga.sum())/(source_area[ids].sum()/source_area.sum())
+    for hp in range(int(cfg.get('nantou_hard_passes',18))):
+        gf=group_actual_factor(p,nantou_ids)
+        if gf <= policy['nantou_factor']*1.035: break
+        raw_scale=math.sqrt(policy['nantou_factor']/max(gf,1e-12))
+        scale=max(float(cfg.get('nantou_min_linear_step',0.88)), min(1.0, raw_scale))
+        center=p[nantou_vids].mean(axis=0); accepted=False
+        for retry in range(12):
+            eff=1-(1-scale)*(0.5**retry)
+            cand=p.copy(); cand[nantou_vids]=center+(p[nantou_vids]-center)*eff
+            rr=np.linalg.norm(cand,axis=1); over=rr>maxrho; cand[over]*=(maxrho/rr[over])[:,None]
+            for v in anchors: cand[v]=p0[v]
+            ok=True
+            for j in affected_by_nantou:
+                a,b,c,_ti=triangles[j]; sa=tri_signed2(cand,a,b,c)
+                if sa<=0 or abs(sa)<init_tri_area[j]*min_ratio: ok=False; break
+            if ok: p=cand; accepted=True; break
+        if not accepted: break
+        if hp%3==0: print(f'nantou hard {hp:02d} factor={group_actual_factor(p,nantou_ids):.4f}',flush=True)
+    print('nantou hard final',group_actual_factor(p,nantou_ids),flush=True)
     owner_count=np.zeros(nvert)
     town_vid_arrays=[]
     for t in towns:
@@ -328,11 +354,10 @@ def main():
         for v,ns in enumerate(neigh):
             if len(ns): lap[v]=disp[ns].mean(axis=0)-disp[v]
         delta += smooth*lap*(np.where(coast_mask,coast_mult,1.0)[:,None])
-        delta += anchor_strength*(p0-p)
         for v in anchors: delta[v]=0
 
         step=1.0; accepted=False; base=meanerr
-        for _ in range(12):
+        for retry in range(12):
             cand=p+step*delta
             rr=np.linalg.norm(cand,axis=1); over=rr>maxrho
             cand[over]*=(maxrho/rr[over])[:,None]
