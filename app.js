@@ -6,7 +6,7 @@ const MAINLAND_BOX = { minLon: 120.0, maxLon: 122.12, minLat: 21.72, maxLat: 25.
 const OFFSHORE_TOWNS = new Set(["綠島鄉", "兰嶼鄉", "蘭嶼鄉", "琉球鄉"]);
 
 const RADIUS = 1;
-const TARGET_MAX_COLAT_DEG = 100;
+const TARGET_MAX_COLAT_DEG = 115;
 const MAX_MESH_EDGE_DEG = 5;
 const MAX_BORDER_EDGE_DEG = 4;
 const MIN_CAMERA_Z = 2.0;
