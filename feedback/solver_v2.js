@@ -91,7 +91,6 @@ function northWeight(stat) {
 function isEligibleCoastalSink(stat) {
   return !isTaipeiCore(stat) && stat.coastExposure > 0.001 &&
     stat.county !== NANTOU_COUNTY &&
-    !NANTOU_ADJACENT.has(stat.county) &&
     !MIDDLE_RECEIVERS.has(stat.county);
 }
 function isSouthPrimeSink(stat) {
@@ -143,9 +142,6 @@ function applyBasePolicy(towns) {
   for (const s of towns.values()) {
     if (s.county === NANTOU_COUNTY) {
       s.controlArea = s.sourceArea * NANTOU_AREA_RETAIN;
-      pool += s.sourceArea - s.controlArea;
-    } else if (NANTOU_ADJACENT.has(s.county)) {
-      s.controlArea = s.sourceArea * ADJACENT_AREA_RETAIN;
       pool += s.sourceArea - s.controlArea;
     }
   }
@@ -372,6 +368,6 @@ export function buildSolvedProjection(features) {
   }
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "nantou-hard+north40";
+  p.policyVersion = "checkpointA-no-county-adjacency-proxy";
   return p;
 }
