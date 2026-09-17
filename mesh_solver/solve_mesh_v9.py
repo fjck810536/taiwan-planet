@@ -114,6 +114,11 @@ coast_pass = r'''    # v9 terminal-coast pass: south_prime coastline only.
                   'nantou',nfactor(P),'southRatio',south_ratio,flush=True)
         if sweep_accept==0 or score_start-score<1e-10:
             print('south coast converged',csweep,'accepted',sweep_accept,'deltaScore',score_start-score,flush=True);break
+    # Recompute final audit from the actual post-coast geometry; v2/v5 computed
+    # these caches before this v9 pass, so leaving them stale would make
+    # towns[].actualFactor and mean/max diagnostics disagree with south_ratio.
+    actual,e,meanerr,maxerr=err(P);ash=actual/actual.sum();af=ash/(source/source.sum());tf=tshare/(source/source.sum())
+    south_ratio=((actual[south_ids].sum()/max(actual.sum(),1e-15))/max(south_target_share,1e-15)) if south_ids else 1.0
 '''
 
 src = src.replace(insert_marker, coast_pass + insert_marker, 1)
