@@ -9,25 +9,24 @@ const RADIUS = 1;
 const TARGET_MAX_COLAT_DEG = 115;
 const MAX_MESH_EDGE_DEG = 5;
 const MAX_BORDER_EDGE_DEG = 4;
+const AUDIT_EDGE_DEG = 1.5;
 const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
 const ROTATION_SPEED = 0.0062;
 
-// Area-flow prototype: keep the topology continuous, then redistribute visual area
-// through one smooth source-plane deformation field before the conformal sphere map.
+// Area-flow policy. Topology remains continuous because every coordinate is moved
+// through one shared smooth deformation field before the spherical projection.
 const NANTOU_AREA_RETAIN = 0.35;
 const ADJACENT_AREA_RETAIN = 0.90;
 const MIDDLE_POOL_SHARE = 0.15;
 const MIDDLE_GAIN_CAP = 0.20;
+const COASTAL_GAIN_CAP = 2.50;
+const COASTAL_RADIAL_POWER = 3;
 const POLICY_WARP_STRENGTH = 0.88;
 const POLICY_SIGMA_MULTIPLIER = 2.35;
 
 const NANTOU_COUNTY = "南投縣";
 const NANTOU_ADJACENT = new Set(["台中市", "彰化縣", "雲林縣", "嘉義縣", "高雄市", "花蓮縣"]);
-const COASTAL_RECEIVERS = new Set([
-  "基隆市", "新北市", "桃園市", "新竹縣", "新竹市", "苗栗縣",
-  "台南市", "屏東縣", "台東縣", "宜蘭縣"
-]);
 const MIDDLE_RECEIVERS = new Set(["台北市", "嘉義市"]);
 
 const stage = document.querySelector("#stage");
@@ -96,6 +95,11 @@ function eachCoordinate(geometry, callback) {
   if (geometry.type === "Polygon") geometry.coordinates.forEach(r => r.forEach(callback));
   else if (geometry.type === "MultiPolygon") geometry.coordinates.forEach(p => p.forEach(r => r.forEach(callback)));
 }
+function eachOuterRing(geometry, callback) {
+  if (!geometry) return;
+  if (geometry.type === "Polygon") callback(geometry.coordinates[0]);
+  else if (geometry.type === "MultiPolygon") geometry.coordinates.forEach(p => callback(p[0]));
+}
 function centroidOfFeature(f) {
   let sx = 0, sy = 0, n = 0;
   eachCoordinate(f.geometry, ([lon, lat]) => { sx += lon; sy += lat; n++; });
@@ -129,6 +133,45 @@ function rawSourceXY(centerLon, centerLat, lon, lat) {
   return new THREE.Vector2(rho * Math.sin(bearing), rho * Math.cos(bearing));
 }
 
+function geoUnitVector(lonDeg, latDeg) {
+  const lon = THREE.MathUtils.degToRad(lonDeg);
+  const lat = THREE.MathUtils.degToRad(latDeg);
+  const c = Math.cos(lat);
+  return new THREE.Vector3(c * Math.cos(lon), c * Math.sin(lon), Math.sin(lat));
+}
+
+function sphericalTriangleArea(a, b, c) {
+  const numerator = Math.abs(a.dot(new THREE.Vector3().crossVectors(b, c)));
+  const denominator = 1 + a.dot(b) + b.dot(c) + c.dot(a);
+  return 2 * Math.atan2(numerator, Math.max(1e-15, denominator));
+}
+
+function featureGeoArea(feature, centerLon, centerLat) {
+  const polygonArea = polygon => {
+    if (!polygon?.length) return 0;
+    const outer = cleanRing(polygon[0]);
+    if (outer.length < 3) return 0;
+    const holes = polygon.slice(1).map(cleanRing).filter(r => r.length >= 3);
+    const contour2D = outer.map(([lon, lat]) => rawSourceXY(centerLon, centerLat, lon, lat));
+    const holes2D = holes.map(r => r.map(([lon, lat]) => rawSourceXY(centerLon, centerLat, lon, lat)));
+    const faces = THREE.ShapeUtils.triangulateShape(contour2D, holes2D);
+    const all = outer.concat(...holes);
+    let area = 0;
+    for (const tri of faces) {
+      const a = geoUnitVector(all[tri[0]][0], all[tri[0]][1]);
+      const b = geoUnitVector(all[tri[1]][0], all[tri[1]][1]);
+      const c = geoUnitVector(all[tri[2]][0], all[tri[2]][1]);
+      area += sphericalTriangleArea(a, b, c);
+    }
+    return area;
+  };
+  const g = feature.geometry;
+  if (!g) return 0;
+  if (g.type === "Polygon") return polygonArea(g.coordinates);
+  if (g.type === "MultiPolygon") return g.coordinates.reduce((sum, poly) => sum + polygonArea(poly), 0);
+  return 0;
+}
+
 function ringPlanarArea(ring, centerLon, centerLat) {
   if (!ring?.length) return 0;
   let area2 = 0;
@@ -156,69 +199,159 @@ function featurePlanarArea(feature, centerLon, centerLat) {
   return 0;
 }
 
-function buildAreaPolicy(features, centerLon, centerLat) {
-  const counties = new Map();
+const coordKey = ([lon, lat]) => `${Number(lon).toFixed(5)},${Number(lat).toFixed(5)}`;
+function segmentKey(a, b) {
+  const ka = coordKey(a), kb = coordKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
+
+function buildCoastlineStats(features, centerLon, centerLat) {
+  const segmentCounts = new Map();
+  for (const f of features) eachOuterRing(f.geometry, ring => {
+    if (!ring?.length) return;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const key = segmentKey(ring[i], ring[i + 1]);
+      segmentCounts.set(key, (segmentCounts.get(key) || 0) + 1);
+    }
+  });
+
+  const stats = new Map();
   for (const f of features) {
-    const county = featureCountyName(f);
-    if (!county) continue;
-    if (!counties.has(county)) counties.set(county, { county, area: 0, points: [] });
-    const stat = counties.get(county);
-    stat.area += featurePlanarArea(f, centerLon, centerLat);
-    eachCoordinate(f.geometry, ([lon, lat]) => stat.points.push(rawSourceXY(centerLon, centerLat, lon, lat)));
+    let totalLength = 0, coastLength = 0;
+    eachOuterRing(f.geometry, ring => {
+      if (!ring?.length) return;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const a = rawSourceXY(centerLon, centerLat, ring[i][0], ring[i][1]);
+        const b = rawSourceXY(centerLon, centerLat, ring[i + 1][0], ring[i + 1][1]);
+        const len = a.distanceTo(b);
+        totalLength += len;
+        if ((segmentCounts.get(segmentKey(ring[i], ring[i + 1])) || 0) === 1) coastLength += len;
+      }
+    });
+    stats.set(featureKey(f), {
+      coastLength,
+      totalLength,
+      coastExposure: totalLength > 0 ? coastLength / totalLength : 0
+    });
+  }
+  return stats;
+}
+
+function allocateWithCaps(stats, amount, weightFn, maxFactor) {
+  let remaining = amount;
+  let active = stats.filter(s => weightFn(s) > 0 && s.sourceArea > 0);
+  for (let pass = 0; pass < 12 && remaining > 1e-14 && active.length; pass++) {
+    const totalWeight = active.reduce((sum, s) => sum + weightFn(s), 0);
+    if (totalWeight <= 0) break;
+    let distributed = 0;
+    const next = [];
+    for (const stat of active) {
+      const capacity = Math.max(0, stat.sourceArea * maxFactor - stat.targetArea);
+      if (capacity <= 1e-14) continue;
+      const proposed = remaining * weightFn(stat) / totalWeight;
+      const gain = Math.min(capacity, proposed);
+      stat.targetArea += gain;
+      distributed += gain;
+      if (capacity - gain > 1e-14) next.push(stat);
+    }
+    if (distributed <= 1e-14) break;
+    remaining -= distributed;
+    active = next;
+  }
+  return remaining;
+}
+
+function buildAreaPolicy(features, centerLon, centerLat) {
+  const coastlineStats = buildCoastlineStats(features, centerLon, centerLat);
+  const towns = new Map();
+  let maxCenterRadius = 1e-12;
+
+  for (const f of features) {
+    const key = featureKey(f);
+    const [lon, lat] = centroidOfFeature(f);
+    const center = rawSourceXY(centerLon, centerLat, lon, lat);
+    maxCenterRadius = Math.max(maxCenterRadius, center.length());
+    const planarArea = featurePlanarArea(f, centerLon, centerLat);
+    const sourceArea = featureGeoArea(f, centerLon, centerLat);
+    const coast = coastlineStats.get(key) || { coastLength: 0, totalLength: 0, coastExposure: 0 };
+    towns.set(key, {
+      key,
+      county: featureCountyName(f),
+      town: featureTownName(f),
+      center,
+      planarArea,
+      sourceArea,
+      targetArea: sourceArea,
+      coastExposure: coast.coastExposure
+    });
   }
 
-  for (const stat of counties.values()) {
-    let sx = 0, sy = 0;
-    for (const p of stat.points) { sx += p.x; sy += p.y; }
-    const n = Math.max(1, stat.points.length);
-    stat.center = new THREE.Vector2(sx / n, sy / n);
-    stat.eqRadius = Math.sqrt(Math.max(stat.area, 1e-12) / Math.PI);
-    stat.targetArea = stat.area;
+  for (const stat of towns.values()) {
+    stat.radial = THREE.MathUtils.clamp(stat.center.length() / maxCenterRadius, 0, 1);
+    stat.eqRadius = Math.sqrt(Math.max(stat.planarArea, 1e-12) / Math.PI);
   }
 
   let pool = 0;
-  const nantou = counties.get(NANTOU_COUNTY);
-  if (nantou) {
-    nantou.targetArea = nantou.area * NANTOU_AREA_RETAIN;
-    pool += nantou.area - nantou.targetArea;
-  }
-  for (const county of NANTOU_ADJACENT) {
-    const stat = counties.get(county);
-    if (!stat) continue;
-    stat.targetArea = stat.area * ADJACENT_AREA_RETAIN;
-    pool += stat.area - stat.targetArea;
+  for (const stat of towns.values()) {
+    if (stat.county === NANTOU_COUNTY) {
+      stat.targetArea = stat.sourceArea * NANTOU_AREA_RETAIN;
+      pool += stat.sourceArea - stat.targetArea;
+    } else if (NANTOU_ADJACENT.has(stat.county)) {
+      stat.targetArea = stat.sourceArea * ADJACENT_AREA_RETAIN;
+      pool += stat.sourceArea - stat.targetArea;
+    }
   }
 
-  const middleStats = [...MIDDLE_RECEIVERS].map(name => counties.get(name)).filter(Boolean);
-  const middleBase = middleStats.reduce((sum, s) => sum + s.area, 0);
+  const middleStats = [...towns.values()].filter(s => MIDDLE_RECEIVERS.has(s.county));
+  const middleBase = middleStats.reduce((sum, s) => sum + s.sourceArea, 0);
   const desiredMiddleGain = pool * MIDDLE_POOL_SHARE;
   const middleCapacity = middleBase * MIDDLE_GAIN_CAP;
   const middleGain = Math.min(desiredMiddleGain, middleCapacity);
-  const coastalGain = pool - middleGain;
-
-  const coastalStats = [...COASTAL_RECEIVERS].map(name => counties.get(name)).filter(Boolean);
-  const coastalBase = coastalStats.reduce((sum, s) => sum + s.area, 0);
-
-  for (const stat of middleStats) {
-    const share = middleBase > 0 ? stat.area / middleBase : 0;
-    stat.targetArea += middleGain * share;
+  if (middleGain > 0 && middleBase > 0) {
+    for (const stat of middleStats) stat.targetArea += middleGain * stat.sourceArea / middleBase;
   }
-  for (const stat of coastalStats) {
-    const share = coastalBase > 0 ? stat.area / coastalBase : 0;
-    stat.targetArea += coastalGain * share;
+
+  let coastalGain = pool - middleGain;
+  const coastalStats = [...towns.values()].filter(s =>
+    s.coastExposure > 0.001 &&
+    s.county !== NANTOU_COUNTY &&
+    !NANTOU_ADJACENT.has(s.county) &&
+    !MIDDLE_RECEIVERS.has(s.county)
+  );
+
+  const sinkWeight = stat => {
+    const tipBonus = stat.radial > 0.82 ? 1.65 : stat.radial > 0.70 ? 1.25 : 1;
+    return Math.pow(stat.radial, COASTAL_RADIAL_POWER) * stat.coastExposure * tipBonus;
+  };
+  coastalGain = allocateWithCaps(coastalStats, coastalGain, sinkWeight, COASTAL_GAIN_CAP);
+
+  // If every coastal sink hits its cap, keep any tiny leftover in the middle layer
+  // rather than silently changing the total land-area budget.
+  if (coastalGain > 1e-14 && middleStats.length) {
+    allocateWithCaps(middleStats, coastalGain, s => s.sourceArea, 1 + MIDDLE_GAIN_CAP);
   }
 
   const seeds = [];
-  const audit = [];
-  for (const stat of counties.values()) {
-    const factor = stat.area > 0 ? stat.targetArea / stat.area : 1;
+  const targetFactors = new Map();
+  const policyAudit = [];
+  for (const stat of towns.values()) {
+    const factor = stat.sourceArea > 0 ? stat.targetArea / stat.sourceArea : 1;
     const linearScale = Math.sqrt(Math.max(0.05, factor));
     const sigma = Math.max(0.0035, stat.eqRadius * POLICY_SIGMA_MULTIPLIER);
-    seeds.push({ county: stat.county, center: stat.center, linearScale, sigma, factor });
-    audit.push({ county: stat.county, targetAreaFactor: Number(factor.toFixed(3)) });
+    seeds.push({ key: stat.key, center: stat.center, linearScale, sigma, factor });
+    targetFactors.set(stat.key, factor);
+    policyAudit.push({
+      region: stat.key,
+      coast: Number(stat.coastExposure.toFixed(3)),
+      radial: Number(stat.radial.toFixed(3)),
+      target: Number(factor.toFixed(3)),
+      sinkWeight: Number(sinkWeight(stat).toFixed(4))
+    });
   }
-  console.table(audit.sort((a, b) => a.targetAreaFactor - b.targetAreaFactor));
-  return seeds;
+  console.groupCollapsed("Taiwan Planet area policy targets");
+  console.table(policyAudit.sort((a, b) => b.target - a.target));
+  console.groupEnd();
+  return { seeds, targetFactors };
 }
 
 function warpSourceXY(raw, seeds, strength = POLICY_WARP_STRENGTH) {
@@ -252,11 +385,11 @@ function buildProjection(features) {
 
   const centerLon = (minLon + maxLon) / 2;
   const centerLat = (minLat + maxLat) / 2;
-  const policySeeds = buildAreaPolicy(features, centerLon, centerLat);
+  const policy = buildAreaPolicy(features, centerLon, centerLat);
   let maxSourceRho = 1e-12;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
     const raw = rawSourceXY(centerLon, centerLat, lon, lat);
-    const warped = warpSourceXY(raw, policySeeds);
+    const warped = warpSourceXY(raw, policy.seeds);
     maxSourceRho = Math.max(maxSourceRho, warped.length());
   });
 
@@ -265,7 +398,8 @@ function buildProjection(features) {
   return {
     centerLon,
     centerLat,
-    policySeeds,
+    policySeeds: policy.seeds,
+    targetFactors: policy.targetFactors,
     maxSourceRho,
     targetMaxRho,
     conformalScale: targetMaxRho / maxSourceRho
@@ -305,6 +439,93 @@ function cleanRing(ring) {
 
 const midpointCoord = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
 const mappedUnit = coord => geoToVector3(coord[0], coord[1], 1).normalize();
+
+function mappedTriangleArea(a, b, c, depth = 0) {
+  const ua = mappedUnit(a), ub = mappedUnit(b), uc = mappedUnit(c);
+  const maxEdge = Math.max(ua.angleTo(ub), ub.angleTo(uc), uc.angleTo(ua));
+  if (maxEdge > THREE.MathUtils.degToRad(AUDIT_EDGE_DEG) && depth < 6) {
+    const ab = midpointCoord(a, b);
+    const bc = midpointCoord(b, c);
+    const ca = midpointCoord(c, a);
+    return mappedTriangleArea(a, ab, ca, depth + 1)
+      + mappedTriangleArea(ab, b, bc, depth + 1)
+      + mappedTriangleArea(ca, bc, c, depth + 1)
+      + mappedTriangleArea(ab, bc, ca, depth + 1);
+  }
+  return sphericalTriangleArea(ua, ub, uc);
+}
+
+function featureMappedArea(feature) {
+  const polygonArea = polygon => {
+    if (!polygon?.length) return 0;
+    const outer = cleanRing(polygon[0]);
+    if (outer.length < 3) return 0;
+    const holes = polygon.slice(1).map(cleanRing).filter(r => r.length >= 3);
+    const contour2D = outer.map(([lon, lat]) => sourceLocalXY(lon, lat));
+    const holes2D = holes.map(r => r.map(([lon, lat]) => sourceLocalXY(lon, lat)));
+    const faces = THREE.ShapeUtils.triangulateShape(contour2D, holes2D);
+    const all = outer.concat(...holes);
+    let area = 0;
+    for (const tri of faces) area += mappedTriangleArea(all[tri[0]], all[tri[1]], all[tri[2]]);
+    return area;
+  };
+  const g = feature.geometry;
+  if (!g) return 0;
+  if (g.type === "Polygon") return polygonArea(g.coordinates);
+  if (g.type === "MultiPolygon") return g.coordinates.reduce((sum, poly) => sum + polygonArea(poly), 0);
+  return 0;
+}
+
+function auditProjectedAreas(features) {
+  const rows = features.map(f => ({
+    key: featureKey(f),
+    county: featureCountyName(f),
+    town: featureTownName(f),
+    sourceArea: featureGeoArea(f, projectionState.centerLon, projectionState.centerLat),
+    targetFactor: projectionState.targetFactors?.get(featureKey(f)) ?? 1,
+    actualArea: featureMappedArea(f)
+  }));
+  const sourceTotal = rows.reduce((sum, r) => sum + r.sourceArea, 0);
+  const actualTotal = rows.reduce((sum, r) => sum + r.actualArea, 0);
+  for (const row of rows) {
+    const sourceShare = sourceTotal > 0 ? row.sourceArea / sourceTotal : 0;
+    const actualShare = actualTotal > 0 ? row.actualArea / actualTotal : 0;
+    row.actualFactor = sourceShare > 0 ? actualShare / sourceShare : 1;
+    row.errorVsTarget = row.targetFactor > 0 ? row.actualFactor / row.targetFactor : 1;
+  }
+
+  const townAudit = rows.map(r => ({
+    region: r.key,
+    target: Number(r.targetFactor.toFixed(3)),
+    actual: Number(r.actualFactor.toFixed(3)),
+    actualOverTarget: Number(r.errorVsTarget.toFixed(3))
+  })).sort((a, b) => b.actual - a.actual);
+
+  const countyMap = new Map();
+  for (const row of rows) {
+    if (!countyMap.has(row.county)) countyMap.set(row.county, { county: row.county, source: 0, target: 0, actual: 0 });
+    const county = countyMap.get(row.county);
+    county.source += row.sourceArea;
+    county.target += row.sourceArea * row.targetFactor;
+    county.actual += row.actualArea;
+  }
+  const countyAudit = [...countyMap.values()].map(county => {
+    const sourceShare = county.source / sourceTotal;
+    const actualShare = county.actual / actualTotal;
+    return {
+      county: county.county,
+      target: Number((county.target / county.source).toFixed(3)),
+      actual: Number((actualShare / sourceShare).toFixed(3))
+    };
+  }).sort((a, b) => b.actual - a.actual);
+
+  console.group("Taiwan Planet spherical area audit");
+  console.table(countyAudit);
+  console.table(townAudit);
+  console.groupEnd();
+
+  return { townAudit, countyAudit, worst: townAudit.slice(0, 3) };
+}
 
 function emitWarpedTriangle(bucket, a, b, c, depth = 0) {
   const ua = mappedUnit(a), ub = mappedUnit(b), uc = mappedUnit(c);
@@ -431,9 +652,11 @@ async function loadTaiwan() {
     const features = collection.features.map(sanitizeFeature).filter(Boolean);
     if (!features.length) throw new Error("找不到台灣本島行政區");
     projectionState = buildProjection(features);
+    const audit = auditProjectedAreas(features);
     buildLandGeometry(features);
     buildLabels(features);
-    statusEl.textContent = `本島行政區 ${features.length} 個・115° 等角・面積流原型`;
+    const worstText = audit.worst.map(x => `${x.region} ${x.actual.toFixed(2)}×`).join("・");
+    statusEl.textContent = `本島行政區 ${features.length} 個・115°・面積流 audit・${worstText}`;
     document.body.classList.add("ready");
   } catch (err) {
     console.error(err);
