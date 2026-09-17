@@ -30,6 +30,7 @@
   "solver": {
     "control_simplify_tolerance": 0.004,
     "iterations": 120,
+    "local_edge_sweeps": 40,
     "area_alpha": 0.10,
     "max_local_scale_step": 0.018,
     "smooth_strength": 0.08,
