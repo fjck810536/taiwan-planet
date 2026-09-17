@@ -41,23 +41,31 @@ const NEW_TAIPEI_NORTH = new Set([
 ]);
 const KEELUNG_NEAR = new Set(["萬里區", "瑞芳區", "汐止區"]);
 
-const BOOST_REGIONS = new Set([
-  "台北市|北投區", "台北市|士林區", "台北市|內湖區",
-  "新北市|金山區", "新北市|三芝區", "新北市|石門區",
-  "新北市|貢寮區", "新北市|雙溪區", "新北市|平溪區", "新北市|坪林區",
-  "基隆市|仁愛區", "基隆市|安樂區", "基隆市|暖暖區",
-  "宜蘭縣|頭城鎮", "宜蘭縣|礁溪鄉", "宜蘭縣|宜蘭市", "宜蘭縣|員山鄉",
-  "宜蘭縣|羅東鎮", "宜蘭縣|三星鄉", "宜蘭縣|冬山鄉"
-]);
+const TAIPEI_REF_LON = 121.53;
+const TAIPEI_REF_LAT = 25.05;
+const DIRECTIONAL_BOOST_RADIUS_DEG = 1.45;
+const DIRECTIONAL_RECEIVER_FLOOR = 0.055;
 
-function signedRegionKey(stat) {
-  return `${stat.county}|${stat.town}`;
+function directionalBoostScore(stat) {
+  if (isTaipeiCore(stat) || stat.county === NANTOU_COUNTY) return 0;
+
+  const cosLat = Math.cos(THREE.MathUtils.degToRad(TAIPEI_REF_LAT));
+  const dx = (stat.lon - TAIPEI_REF_LON) * cosLat;
+  const dy = stat.lat - TAIPEI_REF_LAT;
+  const dist = Math.hypot(dx, dy);
+  const proximity = Math.exp(-Math.pow(dist / DIRECTIONAL_BOOST_RADIUS_DEG, 2));
+
+  const northSector = dy >= Math.abs(dx) * 0.45;
+  let directional = northSector ? 1.00 : (dx < 0 ? 0.72 : 0.52);
+
+  if (dy < -0.9) directional *= Math.exp(-Math.pow((-dy - 0.9) / 0.85, 2));
+  return directional * proximity;
 }
 function isBoostRegion(stat) {
-  return BOOST_REGIONS.has(signedRegionKey(stat));
+  return directionalBoostScore(stat) >= DIRECTIONAL_RECEIVER_FLOOR;
 }
 function boostWeight(stat) {
-  return isBoostRegion(stat) ? stat.sourceArea : 0;
+  return stat.sourceArea * directionalBoostScore(stat);
 }
 
 function allocateWithCaps(stats, amount, weightFn, maxFactor) {
@@ -460,6 +468,6 @@ export function buildSolvedProjection(features) {
 
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "signed-policy-1+xinyi-local1.2";
+  p.policyVersion = "directional-boost-north-west-east+xinyi-local1.2";
   return p;
 }
