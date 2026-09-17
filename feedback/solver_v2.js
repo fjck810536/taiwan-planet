@@ -5,7 +5,7 @@ import {
   sphericalTriangleArea
 } from "./geo.js";
 
-export const TARGET_MAX_COLAT_DEG = 115;
+export const TARGET_MAX_COLAT_DEG = 122;
 export const FINAL_AUDIT_EDGE_DEG = 1.5;
 const QUICK_AUDIT_EDGE_DEG = 4.5;
 const NANTOU_AREA_RETAIN = 1.00;
@@ -49,6 +49,9 @@ const TAIPEI_REF_LON = 121.53;
 const TAIPEI_REF_LAT = 25.05;
 const DIRECTIONAL_BOOST_RADIUS_DEG = 1.45;
 const DIRECTIONAL_RECEIVER_FLOOR = 0.055;
+const OUTLINE_PRIORITY_EXTRA = 0.10;
+const OUTLINE_PRIORITY_SIGMA_MIN = 0.010;
+const OUTLINE_PRIORITY_SIGMA_MAX = 0.024;
 
 const VISIBLE_BOOST_TARGETS = new Map([
   ["台北市|北投區", 1.55], ["台北市|士林區", 1.55], ["台北市|內湖區", 1.45],
@@ -83,6 +86,38 @@ function isBoostRegion(stat) {
 }
 function boostWeight(stat) {
   return stat.sourceArea * directionalBoostScore(stat);
+}
+
+function buildOutlinePrioritySeeds(towns) {
+  return [...towns.values()]
+    .map(stat => {
+      const target = explicitBoostTarget(stat);
+      if (target <= 1) return null;
+      const weight = THREE.MathUtils.clamp((target - 1) / 0.55, 0, 1);
+      const sigma = THREE.MathUtils.clamp(
+        stat.eqRadius * 3.2,
+        OUTLINE_PRIORITY_SIGMA_MIN,
+        OUTLINE_PRIORITY_SIGMA_MAX
+      );
+      return { center: stat.center.clone(), weight, sigma };
+    })
+    .filter(Boolean);
+}
+function outlinePriorityScore(raw, seeds) {
+  if (!seeds?.length) return 0;
+  let field = 0;
+  for (const seed of seeds) {
+    const dx = raw.x - seed.center.x;
+    const dy = raw.y - seed.center.y;
+    const d2 = dx * dx + dy * dy;
+    const sigma2 = seed.sigma * seed.sigma;
+    field += seed.weight * Math.exp(-d2 / (2 * sigma2));
+  }
+  return 1 - Math.exp(-field);
+}
+function applyOutlineExpansion(point, rawForScore, seeds) {
+  const score = outlinePriorityScore(rawForScore, seeds);
+  return point.clone().multiplyScalar(1 + OUTLINE_PRIORITY_EXTRA * score);
 }
 
 function allocateWithCaps(stats, amount, weightFn, maxFactor) {
@@ -295,6 +330,7 @@ export function warpSourceXY(raw, seeds, strength = POLICY_WARP_STRENGTH) {
 
 function buildProjectionFromTowns(features, centerLon, centerLat, towns, local = null) {
   const seeds = seedsFromTowns(towns);
+  const outlinePrioritySeeds = buildOutlinePrioritySeeds(towns);
   const localState = {
     xinyiLocalAmp: local?.amp || 0,
     xinyiLocalCenter: local?.center || null,
@@ -305,15 +341,21 @@ function buildProjectionFromTowns(features, centerLon, centerLat, towns, local =
     const raw = rawSourceXY(centerLon, centerLat, lon, lat);
     const localRaw = applyXinyiLocalWarp(raw, localState);
     const warped = warpSourceXY(localRaw, seeds);
-    maxSourceRho = Math.max(maxSourceRho, warped.length());
+    const expanded = applyOutlineExpansion(warped, raw, outlinePrioritySeeds);
+    maxSourceRho = Math.max(maxSourceRho, expanded.length());
   });
   const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
   const targetMaxRho = 2 * Math.tan(targetMaxColat / 2);
-  return { centerLon, centerLat, seeds, maxSourceRho, conformalScale: targetMaxRho / maxSourceRho, ...localState };
+  return {
+    centerLon, centerLat, seeds, outlinePrioritySeeds,
+    maxSourceRho, conformalScale: targetMaxRho / maxSourceRho, ...localState
+  };
 }
 export function sourceLocalXYForProjection(lon, lat, p) {
   const raw = rawSourceXY(p.centerLon, p.centerLat, lon, lat);
-  return warpSourceXY(applyXinyiLocalWarp(raw, p), p.seeds);
+  const localRaw = applyXinyiLocalWarp(raw, p);
+  const warped = warpSourceXY(localRaw, p.seeds);
+  return applyOutlineExpansion(warped, raw, p.outlinePrioritySeeds);
 }
 export function geoToVector3WithProjection(lon, lat, p, radius = 1) {
   const source = sourceLocalXYForProjection(lon, lat, p);
@@ -499,6 +541,6 @@ export function buildSolvedProjection(features) {
 
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
+  p.policyVersion = "outline122+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
   return p;
 }
