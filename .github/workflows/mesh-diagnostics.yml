@@ -1,0 +1,33 @@
+name: Extract mesh diagnostics
+
+on:
+  push:
+    paths:
+      - 'mesh_solver/generated/mesh.json'
+      - 'mesh_solver/extract_diagnostics.py'
+      - '.github/workflows/mesh-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python mesh_solver/extract_diagnostics.py
+      - name: Commit compact diagnostics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mesh_solver/generated/diagnostics.json
+          if git diff --cached --quiet; then
+            echo "No diagnostics changes"
+          else
+            git commit -m "Generate compact mesh diagnostics"
+            git push
+          fi
