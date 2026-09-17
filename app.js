@@ -7,7 +7,6 @@ const OFFSHORE_TOWNS = new Set(["綠島鄉", "兰嶼鄉", "蘭嶼鄉", "琉球�
 
 const RADIUS = 1;
 const TARGET_MAX_COLAT_DEG = 85;
-const AREA_SHAPE_BALANCE = 1.22;
 const MAX_MESH_EDGE_DEG = 5;
 const MAX_BORDER_EDGE_DEG = 4;
 const MIN_CAMERA_Z = 2.0;
@@ -109,17 +108,8 @@ function sourcePolar(centerLonDeg, centerLatDeg, lonDeg, latDeg) {
 
 function rawSourceXY(centerLon, centerLat, lon, lat) {
   const { angle, bearing } = sourcePolar(centerLon, centerLat, lon, lat);
-  const rho = 2 * Math.sin(angle / 2);
+  const rho = 2 * Math.tan(angle / 2);
   return new THREE.Vector2(rho * Math.sin(bearing), rho * Math.cos(bearing));
-}
-
-function balanceXY(raw, axisAngle, longScale, shortScale) {
-  const c = Math.cos(axisAngle), s = Math.sin(axisAngle);
-  const along = raw.x * c + raw.y * s;
-  const across = -raw.x * s + raw.y * c;
-  const u = along * longScale;
-  const v = across * shortScale;
-  return new THREE.Vector2(u * c - v * s, u * s + v * c);
 }
 
 function buildProjection(features) {
@@ -131,58 +121,34 @@ function buildProjection(features) {
 
   const centerLon = (minLon + maxLon) / 2;
   const centerLat = (minLat + maxLat) / 2;
-  const samples = [];
+  let maxSourceRho = 1e-12;
   for (const f of features) eachCoordinate(f.geometry, ([lon, lat]) => {
-    samples.push(rawSourceXY(centerLon, centerLat, lon, lat));
+    maxSourceRho = Math.max(maxSourceRho, rawSourceXY(centerLon, centerLat, lon, lat).length());
   });
 
-  let meanX = 0, meanY = 0;
-  for (const p of samples) { meanX += p.x; meanY += p.y; }
-  meanX /= Math.max(1, samples.length);
-  meanY /= Math.max(1, samples.length);
-
-  let cxx = 0, cxy = 0, cyy = 0;
-  for (const p of samples) {
-    const x = p.x - meanX, y = p.y - meanY;
-    cxx += x * x; cxy += x * y; cyy += y * y;
-  }
-  const axisAngle = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
-  const shortScale = Math.sqrt(AREA_SHAPE_BALANCE);
-  const longScale = 1 / shortScale;
-
-  let maxSourceRho = 1e-12;
-  for (const raw of samples) {
-    const balanced = balanceXY(raw, axisAngle, longScale, shortScale);
-    maxSourceRho = Math.max(maxSourceRho, balanced.length());
-  }
-
   const targetMaxColat = THREE.MathUtils.degToRad(TARGET_MAX_COLAT_DEG);
-  const targetMaxRho = 2 * Math.sin(targetMaxColat / 2);
+  const targetMaxRho = 2 * Math.tan(targetMaxColat / 2);
   return {
     centerLon,
     centerLat,
-    axisAngle,
-    longScale,
-    shortScale,
     maxSourceRho,
     targetMaxRho,
-    equalAreaScale: targetMaxRho / maxSourceRho
+    conformalScale: targetMaxRho / maxSourceRho
   };
 }
 
 function sourceLocalXY(lon, lat) {
   const p = projectionState;
-  const raw = rawSourceXY(p.centerLon, p.centerLat, lon, lat);
-  return balanceXY(raw, p.axisAngle, p.longScale, p.shortScale);
+  return rawSourceXY(p.centerLon, p.centerLat, lon, lat);
 }
 
 function geoToVector3(lon, lat, radius = RADIUS) {
   const source = sourceLocalXY(lon, lat);
-  const x = source.x * projectionState.equalAreaScale;
-  const y = source.y * projectionState.equalAreaScale;
+  const x = source.x * projectionState.conformalScale;
+  const y = source.y * projectionState.conformalScale;
   const rho = Math.hypot(x, y);
   if (rho < 1e-12) return new THREE.Vector3(0, 0, radius);
-  const colat = 2 * Math.asin(THREE.MathUtils.clamp(rho / 2, 0, 1));
+  const colat = 2 * Math.atan(rho / 2);
   const s = Math.sin(colat);
   return new THREE.Vector3(
     radius * s * (x / rho),
@@ -331,7 +297,7 @@ async function loadTaiwan() {
     projectionState = buildProjection(features);
     buildLandGeometry(features);
     buildLabels(features);
-    statusEl.textContent = `本島行政區 ${features.length} 個・Lambert 等面積・${TARGET_MAX_COLAT_DEG}°・失真均衡`;
+    statusEl.textContent = `本島行政區 ${features.length} 個・Stereographic 等角・${TARGET_MAX_COLAT_DEG}°`;
     document.body.classList.add("ready");
   } catch (err) {
     console.error(err);
