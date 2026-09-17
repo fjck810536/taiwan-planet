@@ -41,8 +41,8 @@ src, n = re.subn(
 if n != 1:
     raise RuntimeError('v3 overlay could not replace Nantou hard-pass block')
 
-old = """        lap=np.zeros_like(P)\n        for v,ns in enumerate(neigh):\n            if len(ns):lap[v]=P[ns].mean(0)-P[v]\n        D+=smooth*lap"""
-new = """        disp=P-P0;lap=np.zeros_like(P)\n        for v,ns in enumerate(neigh):\n            if len(ns):lap[v]=disp[ns].mean(0)-disp[v]\n        D+=smooth*lap"""
+old = """        D/=own[:,None];lap=np.zeros_like(P)\n        for v,ns in enumerate(neigh):\n            if len(ns):lap[v]=P[ns].mean(0)-P[v]\n        D+=smooth*lap"""
+new = """        D/=own[:,None];disp=P-P0;lap=np.zeros_like(P)\n        for v,ns in enumerate(neigh):\n            if len(ns):lap[v]=disp[ns].mean(0)-disp[v]\n        D+=smooth*lap"""
 if old not in src:
     raise RuntimeError('v3 overlay could not replace smoothing block')
 src = src.replace(old, new, 1)
