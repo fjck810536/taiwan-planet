@@ -388,7 +388,10 @@ function buildLabels() {
 
       return {
         el,
-        anchor: region.anchor.map(v => v / 32767)
+        anchor: region.anchor.map(v => v / 32767),
+        alwaysLabel: region.alwaysLabel === true,
+        labelOffset: region.labelOffset || [0, 0],
+        offshore: region.offshore === true
       };
     });
 }
@@ -437,8 +440,8 @@ function updateLabels(viewRot) {
     const ndcX = (rotated[0] * f / aspect) / (-viewZ);
     const ndcY = (rotated[1] * f) / (-viewZ);
 
-    const sx = (ndcX * 0.5 + 0.5) * width;
-    const sy = (-ndcY * 0.5 + 0.5) * height;
+    const sx = (ndcX * 0.5 + 0.5) * width + item.labelOffset[0];
+    const sy = (-ndcY * 0.5 + 0.5) * height + item.labelOffset[1];
 
     if (
       sx < -90 || sx > width + 90 ||
@@ -448,10 +451,12 @@ function updateLabels(viewRot) {
       continue;
     }
 
-    candidates.push({ item, facing, sx, sy });
+    candidates.push({ item, facing, sx, sy, alwaysLabel: item.alwaysLabel });
   }
 
-  candidates.sort((a, b) => b.facing - a.facing);
+  candidates.sort((a, b) =>
+    Number(b.alwaysLabel) - Number(a.alwaysLabel) || b.facing - a.facing
+  );
 
   let shown = 0;
 
@@ -460,13 +465,13 @@ function updateLabels(viewRot) {
     const gy = Math.floor(c.sy / cellH);
     const key = `${gx}:${gy}`;
 
-    if (shown >= limit || occupied.has(key)) {
+    if (!c.alwaysLabel && (shown >= limit || occupied.has(key))) {
       c.item.el.style.opacity = "0";
       continue;
     }
 
     occupied.add(key);
-    shown++;
+    if (!c.alwaysLabel) shown++;
 
     c.item.el.style.transform =
       `translate3d(${c.sx}px,${c.sy}px,0) translate(-50%,-50%)`;
