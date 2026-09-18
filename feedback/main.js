@@ -48,20 +48,9 @@ function buildDisplayFeatures(topology, object, collection) {
     const town = featureTownName(sanitized);
     const geometry = sourceGeometries[i];
 
-    // Taipei keeps every district exactly as before.
-    if (county === TAIPEI) {
+    // Taipei and New Taipei keep every district as separate display areas.
+    if (county === TAIPEI || county === NEW_TAIPEI) {
       displayFeatures.push(sanitized);
-      continue;
-    }
-
-    // New Taipei becomes exactly three display areas:
-    // Banqiao, Xinzhuang, and the dissolved remainder called "新北".
-    if (county === NEW_TAIPEI) {
-      if (NEW_TAIPEI_STANDALONE.has(town)) {
-        displayFeatures.push(sanitized);
-      } else if (geometry) {
-        newTaipeiRest.push(geometry);
-      }
       continue;
     }
 
@@ -77,9 +66,6 @@ function buildDisplayFeatures(topology, object, collection) {
     if (!mergedByCounty.has(county)) mergedByCounty.set(county, []);
     mergedByCounty.get(county).push(geometry);
   }
-
-  const newTaipei = mergedDisplayFeature(topology, NEW_TAIPEI, "新北", newTaipeiRest);
-  if (newTaipei) displayFeatures.push(newTaipei);
 
   const keelung = mergedDisplayFeature(topology, KEELUNG, "基隆", keelungAll);
   if (keelung) displayFeatures.push(keelung);
