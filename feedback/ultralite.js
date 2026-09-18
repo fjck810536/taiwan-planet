@@ -8,7 +8,12 @@ const BORDER_RADIUS = 1.016;
 const LABEL_RADIUS = 1.025;
 const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
-const ROTATION_SPEED = 0.0062;
+const ARC_RADIUS_SCREEN = 0.46;
+const DRAG_START_PX = 1.5;
+const MAX_SPIN_RAD_PER_MS = 0.0042;
+const SPIN_DECAY_MS = 1050;
+const SPIN_STOP_RAD_PER_MS = 0.000008;
+const PINCH_EXPONENT = 0.96;
 const FOV_DEG = 40;
 const NEAR = 0.1;
 const FAR = 100;
@@ -110,9 +115,7 @@ const sphereIndexBuffer = gl.createBuffer();
 let meta = null;
 let labelItems = [];
 let sphereIndexCount = 0;
-let worldX = 0;
-let worldY = 0;
-let worldZ = 0;
+let orientation = [0, 0, 0, 1];
 let cameraZ = 3.0;
 let renderQueued = false;
 
@@ -138,32 +141,62 @@ function regionColor(region) {
   return hexColor(DEFAULT_REGION_COLORS[stableIndex(region.colorSeed || region.id, DEFAULT_REGION_COLORS.length)]);
 }
 
-function mat3Mul(a, b) {
-  const out = new Float32Array(9);
-  for (let c = 0; c < 3; c++) {
-    for (let r = 0; r < 3; r++) {
-      out[c * 3 + r] =
-        a[0 * 3 + r] * b[c * 3 + 0] +
-        a[1 * 3 + r] * b[c * 3 + 1] +
-        a[2 * 3 + r] * b[c * 3 + 2];
-    }
+function quatNormalize(q) {
+  const d = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+  return [q[0] / d, q[1] / d, q[2] / d, q[3] / d];
+}
+
+function quatMultiply(a, b) {
+  const ax = a[0], ay = a[1], az = a[2], aw = a[3];
+  const bx = b[0], by = b[1], bz = b[2], bw = b[3];
+  return [
+    aw * bx + ax * bw + ay * bz - az * by,
+    aw * by - ax * bz + ay * bw + az * bx,
+    aw * bz + ax * by - ay * bx + az * bw,
+    aw * bw - ax * bx - ay * by - az * bz
+  ];
+}
+
+function quatFromAxisAngle(axis, angle) {
+  const half = angle * 0.5;
+  const s = Math.sin(half);
+  return quatNormalize([axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(half)]);
+}
+
+function quatFromUnitVectors(a, b) {
+  const dot = Math.max(-1, Math.min(1, dot3(a, b)));
+  if (dot < -0.999999) {
+    const fallback = Math.abs(a[0]) < 0.8 ? [1, 0, 0] : [0, 1, 0];
+    const axis = normalize3([
+      a[1] * fallback[2] - a[2] * fallback[1],
+      a[2] * fallback[0] - a[0] * fallback[2],
+      a[0] * fallback[1] - a[1] * fallback[0]
+    ]);
+    return quatFromAxisAngle(axis, Math.PI);
   }
-  return out;
+  const cross = [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0]
+  ];
+  return quatNormalize([cross[0], cross[1], cross[2], 1 + dot]);
 }
-function rotX(a) {
-  const c = Math.cos(a), s = Math.sin(a);
-  return new Float32Array([1,0,0, 0,c,s, 0,-s,c]);
+
+function quatToMat3(qRaw) {
+  const q = quatNormalize(qRaw);
+  const x = q[0], y = q[1], z = q[2], w = q[3];
+  const xx = x * x, yy = y * y, zz = z * z;
+  const xy = x * y, xz = x * z, yz = y * z;
+  const wx = w * x, wy = w * y, wz = w * z;
+  return new Float32Array([
+    1 - 2 * (yy + zz), 2 * (xy + wz),     2 * (xz - wy),
+    2 * (xy - wz),     1 - 2 * (xx + zz), 2 * (yz + wx),
+    2 * (xz + wy),     2 * (yz - wx),     1 - 2 * (xx + yy)
+  ]);
 }
-function rotY(a) {
-  const c = Math.cos(a), s = Math.sin(a);
-  return new Float32Array([c,0,-s, 0,1,0, s,0,c]);
-}
-function rotZ(a) {
-  const c = Math.cos(a), s = Math.sin(a);
-  return new Float32Array([c,s,0, -s,c,0, 0,0,1]);
-}
+
 function rotationMatrix() {
-  return mat3Mul(rotZ(worldZ), mat3Mul(rotY(worldY), rotX(worldX)));
+  return quatToMat3(orientation);
 }
 function transform3(m, v) {
   const x = v[0], y = v[1], z = v[2];
