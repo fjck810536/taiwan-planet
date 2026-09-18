@@ -19,12 +19,13 @@
 .monitor-row b { color:#fff; font-weight:800; }
 .monitor-row i { margin-left:6px; color:rgba(116,195,238,.78); font-style:normal; font-size:9px; font-weight:700; }
 .monitor-pair { min-width:86px; text-align:right; }
-.monitor-row[data-divergence="high"] b { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
+.monitor-row[data-change="up"] b { text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
+.monitor-row[data-change="down"] b { opacity:.72; }
 .monitor-missing { color:rgba(244,248,245,.35); }
 </style>
 </head>
 <body>
-<main id="app" aria-label="Taiwan Planet interactive globe"><div id="stage"></div><div id="labels" aria-hidden="true"></div><div id="status">載入台灣行政區…</div><aside id="priority-monitor" aria-label="重點地區監測"><div class="monitor-title"><span>重點地區監測</span><small>畫面 / v2</small></div><div id="priority-monitor-body">計算中…</div></aside><div id="hint">單指旋轉・雙指縮放／扭轉</div></main>
+<main id="app" aria-label="Taiwan Planet interactive globe"><div id="stage"></div><div id="labels" aria-hidden="true"></div><div id="status">載入台灣行政區…</div><aside id="priority-monitor" aria-label="重點地區監測"><div class="monitor-title"><span>重點地區監測</span><small>相對 146° 基準</small></div><div id="priority-monitor-body">計算中…</div></aside><div id="hint">單指旋轉・雙指縮放／扭轉</div></main>
 <script type="module" src="./feedback/main.js"></script>
 </body>
 </html>
