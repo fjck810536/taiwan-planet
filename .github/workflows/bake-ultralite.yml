@@ -39,6 +39,7 @@ jobs:
         run: |
           git config user.name "taiwan-planet-bot"
           git config user.email "actions@users.noreply.github.com"
+          git pull --rebase origin release/neihu170-ultralite
           git add baked/map.bin baked/meta.json
           if git diff --cached --quiet; then
             echo "Baked assets unchanged."
