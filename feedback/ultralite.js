@@ -378,17 +378,19 @@ function requestRender() {
 function buildLabels() {
   labelsLayer.replaceChildren();
 
-  labelItems = meta.regions.map(region => {
-    const el = document.createElement("div");
-    el.className = "label";
-    el.textContent = region.label;
-    labelsLayer.appendChild(el);
+  labelItems = meta.regions
+    .filter(region => region.showLabel !== false)
+    .map(region => {
+      const el = document.createElement("div");
+      el.className = "label";
+      el.textContent = region.label;
+      labelsLayer.appendChild(el);
 
-    return {
-      el,
-      anchor: region.anchor.map(v => v / 32767)
-    };
-  });
+      return {
+        el,
+        anchor: region.anchor.map(v => v / 32767)
+      };
+    });
 }
 
 function updateLabels(viewRot) {
