@@ -10,9 +10,9 @@ const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
 const ARC_RADIUS_SCREEN = 0.46;
 const DRAG_START_PX = 1.5;
-const MAX_SPIN_RAD_PER_MS = 0.0042;
-const SPIN_DECAY_MS = 1050;
-const SPIN_STOP_RAD_PER_MS = 0.000008;
+const MAX_SPIN_RAD_PER_MS = 0.0060;
+const SPIN_DECAY_MS = 1800;
+const SPIN_STOP_RAD_PER_MS = 0.000006;
 const PINCH_EXPONENT = 0.96;
 const FOV_DEG = 40;
 const NEAR = 0.1;
@@ -386,73 +386,221 @@ window.addEventListener("resize", resize, { passive: true });
 window.visualViewport?.addEventListener("resize", resize, { passive: true });
 
 const pointers = new Map();
-let lastSingle = null;
+let gestureMode = "idle";
+let dragState = null;
 let pinchStartDistance = 0;
 let pinchStartCameraZ = cameraZ;
-let twistStartAngle = 0;
-let twistStartWorldZ = worldZ;
+
+let spinVelocity = [0, 0, 0];
+let spinFrame = 0;
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const angleBetween = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
-const normalizeAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 
-function beginTwoFingerGesture() {
+function mapToArcball(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const radius = Math.max(1, Math.min(rect.width, rect.height) * ARC_RADIUS_SCREEN);
+  let x = (clientX - (rect.left + rect.width * 0.5)) / radius;
+  let y = ((rect.top + rect.height * 0.5) - clientY) / radius;
+  const d2 = x * x + y * y;
+
+  let z;
+  if (d2 <= 0.5) {
+    z = Math.sqrt(Math.max(0, 1 - d2));
+  } else {
+    z = 0.5 / Math.sqrt(d2);
+  }
+  return normalize3([x, y, z]);
+}
+
+function angularVectorFromQuat(qRaw, dt) {
+  let q = quatNormalize(qRaw);
+  if (q[3] < 0) q = [-q[0], -q[1], -q[2], -q[3]];
+
+  const xyz = Math.hypot(q[0], q[1], q[2]);
+  if (xyz < 1e-8) return [0, 0, 0];
+
+  const angle = 2 * Math.atan2(xyz, Math.max(1e-8, q[3]));
+  const inv = 1 / xyz;
+  const speed = angle / Math.max(4, Math.min(40, dt));
+  return [q[0] * inv * speed, q[1] * inv * speed, q[2] * inv * speed];
+}
+
+function clampSpinVelocity(v) {
+  const speed = Math.hypot(v[0], v[1], v[2]);
+  if (speed <= MAX_SPIN_RAD_PER_MS || speed < 1e-12) return v;
+  const k = MAX_SPIN_RAD_PER_MS / speed;
+  return [v[0] * k, v[1] * k, v[2] * k];
+}
+
+function stopSpin() {
+  if (spinFrame) cancelAnimationFrame(spinFrame);
+  spinFrame = 0;
+  spinVelocity = [0, 0, 0];
+}
+
+function startSpin() {
+  spinVelocity = clampSpinVelocity(spinVelocity);
+  if (Math.hypot(...spinVelocity) < SPIN_STOP_RAD_PER_MS * 4) {
+    stopSpin();
+    return;
+  }
+
+  let last = performance.now();
+  const tick = now => {
+    const dt = Math.min(34, Math.max(1, now - last));
+    last = now;
+
+    const speed = Math.hypot(...spinVelocity);
+    if (speed <= SPIN_STOP_RAD_PER_MS) {
+      spinFrame = 0;
+      spinVelocity = [0, 0, 0];
+      return;
+    }
+
+    const axis = [
+      spinVelocity[0] / speed,
+      spinVelocity[1] / speed,
+      spinVelocity[2] / speed
+    ];
+    const delta = quatFromAxisAngle(axis, speed * dt);
+    orientation = quatNormalize(quatMultiply(delta, orientation));
+
+    const decay = Math.exp(-dt / SPIN_DECAY_MS);
+    spinVelocity = [
+      spinVelocity[0] * decay,
+      spinVelocity[1] * decay,
+      spinVelocity[2] * decay
+    ];
+
+    drawScene();
+    spinFrame = requestAnimationFrame(tick);
+  };
+
+  spinFrame = requestAnimationFrame(tick);
+}
+
+function beginDrag(point) {
+  gestureMode = "drag";
+  dragState = {
+    startX: point.x,
+    startY: point.y,
+    lastX: point.x,
+    lastY: point.y,
+    lastT: point.t,
+    lastVec: mapToArcball(point.x, point.y),
+    active: false
+  };
+  spinVelocity = [0, 0, 0];
+}
+
+function beginPinch() {
   const [a, b] = [...pointers.values()];
+  gestureMode = "pinch";
   pinchStartDistance = Math.max(1, distance(a, b));
   pinchStartCameraZ = cameraZ;
-  twistStartAngle = angleBetween(a, b);
-  twistStartWorldZ = worldZ;
-  lastSingle = null;
+  dragState = null;
+  spinVelocity = [0, 0, 0];
 }
 
 canvas.addEventListener("pointerdown", e => {
   e.preventDefault();
+  stopSpin();
   canvas.setPointerCapture?.(e.pointerId);
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  document.body.classList.add("dragging", "interacted");
-  if (pointers.size === 1) lastSingle = { x: e.clientX, y: e.clientY };
-  else if (pointers.size === 2) beginTwoFingerGesture();
+
+  const point = { x: e.clientX, y: e.clientY, t: performance.now() };
+  pointers.set(e.pointerId, point);
+  document.body.classList.add("dragging");
+
+  if (pointers.size === 1) beginDrag(point);
+  else if (pointers.size === 2) beginPinch();
 }, { passive: false });
 
 canvas.addEventListener("pointermove", e => {
   if (!pointers.has(e.pointerId)) return;
   e.preventDefault();
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) {
-    const p = [...pointers.values()][0];
-    if (lastSingle) {
-      worldY += (p.x - lastSingle.x) * ROTATION_SPEED;
-      worldX += (p.y - lastSingle.y) * ROTATION_SPEED;
-      worldX = Math.max(-1.48, Math.min(1.48, worldX));
-    }
-    lastSingle = { ...p };
-  } else if (pointers.size === 2) {
+
+  const now = performance.now();
+  const point = { x: e.clientX, y: e.clientY, t: now };
+  pointers.set(e.pointerId, point);
+
+  if (pointers.size === 1 && gestureMode === "drag" && dragState) {
+    const travel = Math.hypot(
+      point.x - dragState.startX,
+      point.y - dragState.startY
+    );
+
+    if (!dragState.active && travel < DRAG_START_PX) return;
+    dragState.active = true;
+
+    const currentVec = mapToArcball(point.x, point.y);
+    const delta = quatFromUnitVectors(dragState.lastVec, currentVec);
+
+    orientation = quatNormalize(quatMultiply(delta, orientation));
+
+    const dt = now - dragState.lastT;
+    const instant = angularVectorFromQuat(delta, dt);
+    spinVelocity = clampSpinVelocity([
+      spinVelocity[0] * 0.52 + instant[0] * 0.48,
+      spinVelocity[1] * 0.52 + instant[1] * 0.48,
+      spinVelocity[2] * 0.52 + instant[2] * 0.48
+    ]);
+
+    dragState.lastVec = currentVec;
+    dragState.lastX = point.x;
+    dragState.lastY = point.y;
+    dragState.lastT = now;
+
+    requestRender();
+    return;
+  }
+
+  if (pointers.size === 2 && gestureMode === "pinch") {
     const [a, b] = [...pointers.values()];
     const currentDistance = Math.max(1, distance(a, b));
-    const currentAngle = angleBetween(a, b);
-    cameraZ = Math.max(MIN_CAMERA_Z, Math.min(
-      MAX_CAMERA_Z,
-      pinchStartCameraZ * pinchStartDistance / currentDistance
-    ));
-    worldZ = twistStartWorldZ - normalizeAngle(currentAngle - twistStartAngle);
+    const ratio = currentDistance / pinchStartDistance;
+
+    cameraZ = Math.max(
+      MIN_CAMERA_Z,
+      Math.min(
+        MAX_CAMERA_Z,
+        pinchStartCameraZ / Math.pow(ratio, PINCH_EXPONENT)
+      )
+    );
+    requestRender();
   }
-  requestRender();
 }, { passive: false });
 
-function pointerUp(e) {
+function endPointer(e, cancelled = false) {
   e.preventDefault();
   pointers.delete(e.pointerId);
+
   if (!pointers.size) {
-    lastSingle = null;
+    const shouldSpin =
+      !cancelled &&
+      gestureMode === "drag" &&
+      dragState?.active;
+
+    gestureMode = "idle";
+    dragState = null;
     document.body.classList.remove("dragging");
-  } else if (pointers.size === 1) {
-    lastSingle = { ...[...pointers.values()][0] };
+
+    if (shouldSpin) startSpin();
+    else stopSpin();
+    return;
+  }
+
+  stopSpin();
+
+  if (pointers.size === 1) {
+    const p = [...pointers.values()][0];
+    beginDrag({ ...p, t: performance.now() });
   } else if (pointers.size === 2) {
-    beginTwoFingerGesture();
+    beginPinch();
   }
 }
-canvas.addEventListener("pointerup", pointerUp, { passive: false });
-canvas.addEventListener("pointercancel", pointerUp, { passive: false });
+
+canvas.addEventListener("pointerup", e => endPointer(e, false), { passive: false });
+canvas.addEventListener("pointercancel", e => endPointer(e, true), { passive: false });
 
 const block = e => e.preventDefault();
 ["gesturestart","gesturechange","gestureend","contextmenu","dragstart","selectstart"].forEach(type =>
@@ -489,6 +637,4 @@ async function load() {
 
 load().catch(err => {
   console.error(err);
-  const hint = document.querySelector("#hint");
-  if (hint) hint.textContent = "地圖資料載入失敗";
 });
