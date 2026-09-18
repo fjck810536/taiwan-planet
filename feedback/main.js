@@ -37,7 +37,7 @@ function buildDisplayFeatures(topology, object, collection) {
 
   const newTaipeiRest = [];
   const keelungAll = [];
-  const mergedByCounty = new Map();
+  const mergedByName = new Map();
 
   for (let i = 0; i < collection.features.length; i++) {
     const sourceFeature = collection.features[i];
@@ -63,18 +63,19 @@ function buildDisplayFeatures(topology, object, collection) {
     // Every other county/city is one dissolved display area.
     // The label drops the administrative suffix: 宜蘭縣 -> 宜蘭, 桃園市 -> 桃園.
     if (!geometry) continue;
-    if (!mergedByCounty.has(county)) mergedByCounty.set(county, []);
-    mergedByCounty.get(county).push(geometry);
+    const mergedName = shortAdminName(county);
+    if (!mergedByName.has(mergedName)) mergedByName.set(mergedName, []);
+    mergedByName.get(mergedName).push(geometry);
   }
 
   const keelung = mergedDisplayFeature(topology, KEELUNG, "基隆", keelungAll);
   if (keelung) displayFeatures.push(keelung);
 
-  for (const [county, geometries] of mergedByCounty) {
+  for (const [name, geometries] of mergedByName) {
     const merged = mergedDisplayFeature(
       topology,
-      county,
-      shortAdminName(county),
+      name,
+      name,
       geometries
     );
     if (merged) displayFeatures.push(merged);
