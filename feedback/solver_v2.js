@@ -52,6 +52,13 @@ const DIRECTIONAL_RECEIVER_FLOOR = 0.055;
 const OUTLINE_PRIORITY_EXTRA = 0.10;
 const OUTLINE_PRIORITY_SIGMA_MIN = 0.010;
 const OUTLINE_PRIORITY_SIGMA_MAX = 0.024;
+const RELATIVE_SHRINK_TARGET = 0.90;
+const RELATIVE_SHRINK_LINEAR_AMP = 1 - Math.sqrt(RELATIVE_SHRINK_TARGET);
+const RELATIVE_SHRINK_GROUPS = [
+  ["南投", new Set(["南投縣"])],
+  ["嘉義", new Set(["嘉義縣", "嘉義市"])],
+  ["花蓮", new Set(["花蓮縣"])]
+];
 
 const VISIBLE_BOOST_TARGETS = new Map([
   ["台北市|北投區", 1.55], ["台北市|士林區", 1.55], ["台北市|內湖區", 1.45],
@@ -118,6 +125,41 @@ function outlinePriorityScore(raw, seeds) {
 function applyOutlineExpansion(point, rawForScore, seeds) {
   const score = outlinePriorityScore(rawForScore, seeds);
   return point.clone().multiplyScalar(1 + OUTLINE_PRIORITY_EXTRA * score);
+}
+
+function buildRelativeShrinkSeeds(towns) {
+  const stats = [...towns.values()];
+  return RELATIVE_SHRINK_GROUPS.map(([name, counties]) => {
+    const members = stats.filter(s => counties.has(s.county));
+    if (!members.length) return null;
+    const total = members.reduce((sum, s) => sum + Math.max(s.sourceArea, 1e-12), 0);
+    const center = new THREE.Vector2();
+    for (const s of members) center.addScaledVector(s.center, Math.max(s.sourceArea, 1e-12) / total);
+
+    let reach = 0;
+    for (const s of members) {
+      reach = Math.max(reach, center.distanceTo(s.center) + s.eqRadius * 1.8);
+    }
+    const sigma = Math.max(0.010, reach * 0.72);
+    return { name, center, sigma, amp: RELATIVE_SHRINK_LINEAR_AMP };
+  }).filter(Boolean);
+}
+
+function applyRelativeShrink(point, p) {
+  const seeds = p?.relativeShrinkSeeds;
+  if (!seeds?.length) return point.clone();
+  let out = point.clone();
+  for (const seed of seeds) {
+    const dx = out.x - seed.center.x;
+    const dy = out.y - seed.center.y;
+    const d2 = dx * dx + dy * dy;
+    const sigma2 = seed.sigma * seed.sigma;
+    const w = Math.exp(-d2 / (2 * sigma2));
+    if (w < 1e-5) continue;
+    const gain = 1 - seed.amp * w;
+    out.set(seed.center.x + dx * gain, seed.center.y + dy * gain);
+  }
+  return out;
 }
 
 function allocateWithCaps(stats, amount, weightFn, maxFactor) {
@@ -355,7 +397,8 @@ export function sourceLocalXYForProjection(lon, lat, p) {
   const raw = rawSourceXY(p.centerLon, p.centerLat, lon, lat);
   const localRaw = applyXinyiLocalWarp(raw, p);
   const warped = warpSourceXY(localRaw, p.seeds);
-  return applyOutlineExpansion(warped, raw, p.outlinePrioritySeeds);
+  const expanded = applyOutlineExpansion(warped, raw, p.outlinePrioritySeeds);
+  return applyRelativeShrink(expanded, p);
 }
 export function geoToVector3WithProjection(lon, lat, p, radius = 1) {
   const source = sourceLocalXYForProjection(lon, lat, p);
@@ -539,8 +582,10 @@ export function buildSolvedProjection(features) {
     p.xinyiLocalNearestCoast = minCoastDistance;
   }
 
+  p.relativeShrinkSeeds = buildRelativeShrinkSeeds(towns);
+  p.relativeShrinkTarget = RELATIVE_SHRINK_TARGET;
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "outline146+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
+  p.policyVersion = "outline146+relative-shrink090+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
   return p;
 }
