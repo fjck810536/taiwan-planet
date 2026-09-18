@@ -1,7 +1,7 @@
 import { feature as topoFeature } from "https://cdn.jsdelivr.net/npm/topojson-client@3/+esm";
 import { sanitizeFeature } from "./geo.js";
-import { buildSolvedProjection, FINAL_AUDIT_EDGE_DEG } from "./solver_v2.js";
-import { auditProjectedAreas as auditRenderedAreas } from "./solver.js";
+import { buildSolvedProjection, auditProjectedAreas as auditCurrentAreas, FINAL_AUDIT_EDGE_DEG } from "./solver_laea.js";
+import { auditProjectedAreas as auditBaselineAreas } from "./solver.js";
 import { buildSolvedProjection as buildBaselineProjection } from "./solver_146_baseline.js";
 import { createTaiwanView } from "./view.js";
 
@@ -113,8 +113,13 @@ async function loadTaiwan() {
 
     const projection = buildSolvedProjection(features);
     const baselineProjection = buildBaselineProjection(features);
-    const currentRenderedAudit = auditRenderedAreas(projection.towns, projection, FINAL_AUDIT_EDGE_DEG, false);
-    const baselineRenderedAudit = auditRenderedAreas(
+    const currentRenderedAudit = auditCurrentAreas(
+      projection.towns,
+      projection,
+      FINAL_AUDIT_EDGE_DEG,
+      true
+    );
+    const baselineRenderedAudit = auditBaselineAreas(
       baselineProjection.towns,
       baselineProjection,
       FINAL_AUDIT_EDGE_DEG,
