@@ -314,8 +314,11 @@ export function buildSolvedProjection(features) {
     minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
     minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
   });
-  const centerLon = 121.60;
-  const centerLat = 25.25;
+  const centerFeature = features.find(f =>
+    featureCountyName(f) === "台北市" && featureTownName(f) === "內湖區"
+  );
+  if (!centerFeature) throw new Error("找不到台北市內湖區");
+  const [centerLon, centerLat] = centroidOfFeature(centerFeature);
   const towns = buildTownStats(features, centerLon, centerLat);
   applyBasePolicy(towns);
   let p = buildProjectionFromTowns(features, centerLon, centerLat, towns);
