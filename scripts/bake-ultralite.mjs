@@ -58,6 +58,31 @@ const NEW_TAIPEI = "新北市";
 const KEELUNG = "基隆市";
 const shortName = value => String(value || "").replace(/[縣市]$/, "");
 
+// Reuse the original administrative TopoJSON for offshore islands.
+// These regions are decorative world-space patches: they do not participate in the mainland solver.
+const OFFSHORE_GROUPS = [
+  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null },
+  { id: "金門", label: "金門", county: "金門縣", towns: null },
+  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null },
+  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]) },
+  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]) },
+  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]) }
+];
+
+function rawMergedFeature(label, geometries) {
+  if (!geometries.length) return null;
+  return {
+    type: "Feature",
+    properties: {
+      COUNTYNAME: label,
+      TOWNNAME: label,
+      DISPLAY_LABEL: label,
+      REGION_ID: label
+    },
+    geometry: topoMerge(topology, geometries)
+  };
+}
+
 function mergedFeature(label, geometries) {
   if (!geometries.length) return null;
   const merged = geo.sanitizeFeature({
@@ -76,6 +101,25 @@ function mergedFeature(label, geometries) {
 const display = [];
 const keelung = [];
 const mergedByName = new Map();
+
+const offshoreById = new Map(
+  OFFSHORE_GROUPS.map(group => [group.id, { ...group, geometries: [] }])
+);
+
+// Collect offshore geometry from the untouched source before sanitizeFeature removes it.
+for (let i = 0; i < collection.features.length; i++) {
+  const sourceFeature = collection.features[i];
+  const county = geo.featureCountyName(sourceFeature);
+  const town = geo.featureTownName(sourceFeature);
+  const geometry = sourceGeometries[i];
+  if (!geometry) continue;
+
+  for (const group of offshoreById.values()) {
+    if (county !== group.county) continue;
+    if (group.towns && !group.towns.has(town)) continue;
+    group.geometries.push(geometry);
+  }
+}
 
 for (let i = 0; i < collection.features.length; i++) {
   const sanitized = geo.sanitizeFeature(collection.features[i]);
@@ -112,6 +156,19 @@ if (keelungFeature) {
 for (const [name, geometries] of mergedByName) {
   const merged = mergedFeature(name, geometries);
   if (merged) display.push({ feature: merged, id: name, label: name, colorSeed: name });
+}
+
+for (const group of offshoreById.values()) {
+  const merged = rawMergedFeature(group.label, group.geometries);
+  if (!merged) continue;
+  display.push({
+    feature: merged,
+    id: group.id,
+    label: group.label,
+    colorSeed: group.id,
+    showLabel: false,
+    offshore: true
+  });
 }
 
 const MAX_MESH_EDGE_DEG = 5;
@@ -198,6 +255,8 @@ for (const item of display) {
     id:item.id,
     label:item.label,
     colorSeed:item.colorSeed,
+    showLabel:item.showLabel !== false,
+    offshore:item.offshore === true,
     start,
     count,
     anchor:anchorQ
@@ -212,7 +271,7 @@ const binary=Buffer.concat([
 ]);
 
 const meta={
-  version:1,
+  version:2,
   projection:"stereographic-neihu-170-baked",
   quantization:"snorm16",
   landValues:landArray.length,
@@ -224,7 +283,8 @@ const meta={
     taipei:"districts",
     newTaipei:"districts",
     keelung:"merged",
-    sameNameCountyCity:"merged-by-short-name"
+    sameNameCountyCity:"merged-by-short-name",
+    offshore:"source-topology-decorative-layer"
   }
 };
 
