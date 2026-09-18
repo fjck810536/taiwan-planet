@@ -3,7 +3,7 @@ name: Bake ultralite Taiwan map
 on:
   push:
     branches:
-      - release/neihu170-islands-v1
+      - release/neihu170-islands-layer-v2
     paths:
       - feedback/geo.js
       - feedback/solver.js
@@ -21,7 +21,7 @@ jobs:
       - name: Checkout release branch
         uses: actions/checkout@v4
         with:
-          ref: release/neihu170-islands-v1
+          ref: release/neihu170-islands-layer-v2
           fetch-depth: 0
 
       - name: Set up Node
@@ -45,5 +45,5 @@ jobs:
             exit 0
           fi
           git commit -m "Bake ultralite Taiwan geometry"
-          git pull --rebase origin release/neihu170-islands-v1
-          git push origin HEAD:release/neihu170-islands-v1
+          git pull --rebase origin release/neihu170-islands-layer-v2
+          git push origin HEAD:release/neihu170-islands-layer-v2
