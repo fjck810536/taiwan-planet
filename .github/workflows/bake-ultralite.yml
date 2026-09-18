@@ -1,0 +1,48 @@
+name: Bake ultralite Taiwan map
+
+on:
+  push:
+    branches:
+      - release/neihu170-ultralite
+    paths:
+      - feedback/geo.js
+      - feedback/solver.js
+      - feedback/solver_v2.js
+      - scripts/bake-ultralite.mjs
+      - .github/workflows/bake-ultralite.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          ref: release/neihu170-ultralite
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install build-only dependencies
+        run: npm install --no-save --package-lock=false three@0.180.0 topojson-client@3
+
+      - name: Bake static map geometry
+        run: node scripts/bake-ultralite.mjs
+
+      - name: Commit baked assets
+        run: |
+          git config user.name "taiwan-planet-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add baked/map.bin baked/meta.json
+          if git diff --cached --quiet; then
+            echo "Baked assets unchanged."
+            exit 0
+          fi
+          git commit -m "Bake ultralite Taiwan geometry"
+          git push origin HEAD:release/neihu170-ultralite
