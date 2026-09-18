@@ -5,7 +5,7 @@ import {
   sphericalTriangleArea
 } from "./geo.js";
 
-export const TARGET_MAX_COLAT_DEG = 146;
+export const TARGET_MAX_COLAT_DEG = 180;
 export const FINAL_AUDIT_EDGE_DEG = 1.5;
 const QUICK_AUDIT_EDGE_DEG = 4.5;
 const NANTOU_AREA_RETAIN = 1.00;
