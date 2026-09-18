@@ -489,9 +489,9 @@ export function buildSolvedProjection(features) {
     minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
   });
   const centerFeature = features.find(f =>
-    featureCountyName(f) === "台北市" && featureTownName(f) === "內湖區"
+    featureCountyName(f) === "新北市" && featureTownName(f) === "板橋區"
   );
-  if (!centerFeature) throw new Error("找不到台北市內湖區");
+  if (!centerFeature) throw new Error("找不到新北市板橋區");
   const [centerLon, centerLat] = centroidOfFeature(centerFeature);
   const towns = buildTownStats(features, centerLon, centerLat);
   applyBasePolicy(towns);
