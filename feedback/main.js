@@ -2,6 +2,7 @@ import { feature as topoFeature } from "https://cdn.jsdelivr.net/npm/topojson-cl
 import { sanitizeFeature } from "./geo.js";
 import { buildSolvedProjection, auditProjectedAreas as auditV2Areas, FINAL_AUDIT_EDGE_DEG, TARGET_MAX_COLAT_DEG } from "./solver_v2.js";
 import { auditProjectedAreas as auditRenderedAreas } from "./solver.js";
+import { buildSolvedProjection as buildBaselineProjection } from "./solver_146_baseline.js";
 import { createTaiwanView } from "./view.js";
 
 const DATA_URL = "https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/towns-10t.json";
@@ -22,41 +23,46 @@ function townOnly(regionKey) {
   return regionKey.split("|")[1] || regionKey;
 }
 
-function renderPriorityMonitor(renderedAudit, v2Audit) {
+function renderPriorityMonitor(currentAudit, baselineAudit) {
   if (!priorityMonitorBody) return;
-  const renderedRows = new Map(renderedAudit.rows.map(row => [row.key, row]));
-  const v2Rows = new Map(v2Audit.rows.map(row => [row.key, row]));
+  const currentRows = new Map(currentAudit.rows.map(row => [row.key, row]));
+  const baselineRows = new Map(baselineAudit.rows.map(row => [row.key, row]));
   priorityMonitorBody.replaceChildren();
 
   for (const [groupName, keys] of PRIORITY_GROUPS) {
     const group = document.createElement("section");
     group.className = "monitor-group";
 
-    const renderedValid = keys.map(key => renderedRows.get(key)).filter(Boolean);
-    const v2Valid = keys.map(key => v2Rows.get(key)).filter(Boolean);
-    const renderedMean = renderedValid.length
-      ? renderedValid.reduce((sum, row) => sum + row.actualFactor, 0) / renderedValid.length
-      : 0;
-    const v2Mean = v2Valid.length
-      ? v2Valid.reduce((sum, row) => sum + row.actualFactor, 0) / v2Valid.length
+    const ratios = keys.map(key => {
+      const current = currentRows.get(key);
+      const baseline = baselineRows.get(key);
+      if (!current || !baseline || baseline.actualArea <= 0) return null;
+      return current.actualArea / baseline.actualArea;
+    }).filter(value => Number.isFinite(value));
+
+    const mean = ratios.length
+      ? ratios.reduce((sum, value) => sum + value, 0) / ratios.length
       : 0;
 
     const heading = document.createElement("div");
     heading.className = "monitor-group-title";
-    heading.innerHTML = `<span>${groupName}</span><strong>${renderedMean.toFixed(2)} / ${v2Mean.toFixed(2)}</strong>`;
+    heading.innerHTML = `<span>${groupName}</span><strong>${mean.toFixed(2)}×</strong>`;
     group.appendChild(heading);
 
     for (const key of keys) {
-      const rendered = renderedRows.get(key);
-      const v2 = v2Rows.get(key);
+      const current = currentRows.get(key);
+      const baseline = baselineRows.get(key);
       const item = document.createElement("div");
       item.className = "monitor-row";
-      if (!rendered || !v2) {
+
+      if (!current || !baseline || baseline.actualArea <= 0) {
         item.innerHTML = `<span>${townOnly(key)}</span><span class="monitor-missing">—</span>`;
       } else {
-        const ratio = rendered.actualFactor > 0 ? v2.actualFactor / rendered.actualFactor : Infinity;
-        item.dataset.divergence = ratio > 1.25 || ratio < 0.80 ? "high" : "low";
-        item.innerHTML = `<span>${townOnly(key)}</span><span class="monitor-pair"><b>${rendered.actualFactor.toFixed(2)}×</b><i>${v2.actualFactor.toFixed(2)}×</i></span>`;
+        const ratio = current.actualArea / baseline.actualArea;
+        const deltaPct = (ratio - 1) * 100;
+        item.dataset.change = Math.abs(deltaPct) < 2 ? "flat" : (deltaPct > 0 ? "up" : "down");
+        const sign = deltaPct >= 0 ? "+" : "";
+        item.innerHTML = `<span>${townOnly(key)}</span><span class="monitor-pair"><b>${ratio.toFixed(2)}×</b><i>${sign}${deltaPct.toFixed(0)}%</i></span>`;
       }
       group.appendChild(item);
     }
@@ -76,9 +82,16 @@ async function loadTaiwan() {
 
     statusEl.textContent = `計算 ${TARGET_MAX_COLAT_DEG}° 面積 feedback…`;
     const projection = buildSolvedProjection(features);
+    const baselineProjection = buildBaselineProjection(features);
     const v2Audit = auditV2Areas(projection.towns, projection, FINAL_AUDIT_EDGE_DEG, true);
-    const renderedAudit = auditRenderedAreas(projection.towns, projection, FINAL_AUDIT_EDGE_DEG, false);
-    renderPriorityMonitor(renderedAudit, v2Audit);
+    const currentRenderedAudit = auditRenderedAreas(projection.towns, projection, FINAL_AUDIT_EDGE_DEG, false);
+    const baselineRenderedAudit = auditRenderedAreas(
+      baselineProjection.towns,
+      baselineProjection,
+      FINAL_AUDIT_EDGE_DEG,
+      false
+    );
+    renderPriorityMonitor(currentRenderedAudit, baselineRenderedAudit);
     view.setProjection(projection);
     view.buildLand(features);
     view.buildLabels(features);
