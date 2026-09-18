@@ -162,6 +162,23 @@ export function warpSourceXY(raw, seeds, strength = POLICY_WARP_STRENGTH) {
   return new THREE.Vector2(raw.x + strength * dx / norm, raw.y + strength * dy / norm);
 }
 
+function applyRelativeShrink(point, p) {
+  const seeds = p?.relativeShrinkSeeds;
+  if (!seeds?.length) return point.clone();
+  let out = point.clone();
+  for (const seed of seeds) {
+    const dx = out.x - seed.center.x;
+    const dy = out.y - seed.center.y;
+    const d2 = dx * dx + dy * dy;
+    const sigma2 = seed.sigma * seed.sigma;
+    const w = Math.exp(-d2 / (2 * sigma2));
+    if (w < 1e-5) continue;
+    const gain = 1 - seed.amp * w;
+    out.set(seed.center.x + dx * gain, seed.center.y + dy * gain);
+  }
+  return out;
+}
+
 function buildProjectionFromTowns(features, centerLon, centerLat, towns) {
   const seeds = seedsFromTowns(towns);
   let maxSourceRho = 1e-12;
@@ -174,7 +191,8 @@ function buildProjectionFromTowns(features, centerLon, centerLat, towns) {
   return { centerLon, centerLat, seeds, maxSourceRho, conformalScale: targetMaxRho / maxSourceRho };
 }
 export function sourceLocalXYForProjection(lon, lat, p) {
-  return warpSourceXY(rawSourceXY(p.centerLon, p.centerLat, lon, lat), p.seeds);
+  const warped = warpSourceXY(rawSourceXY(p.centerLon, p.centerLat, lon, lat), p.seeds);
+  return applyRelativeShrink(warped, p);
 }
 export function geoToVector3WithProjection(lon, lat, p, radius = 1) {
   const source = sourceLocalXYForProjection(lon, lat, p);
