@@ -144,7 +144,8 @@ export function createTaiwanView(stage, labelsLayer) {
       const town = featureTownName(f);
       if (!town) continue;
       const county = featureCountyName(f);
-      const text = (counts.get(town) || 0) > 1 ? `${county}${town}` : town;
+      const explicitLabel = f.properties?.DISPLAY_LABEL;
+      const text = explicitLabel || ((counts.get(town) || 0) > 1 ? `${county}${town}` : town);
       const [lon, lat] = centroidOfFeature(f);
       const el = document.createElement("div");
       el.className = "label";
