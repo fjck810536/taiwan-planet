@@ -8,7 +8,11 @@ const BORDER_RADIUS = 1.016;
 const LABEL_RADIUS = 1.025;
 const MIN_CAMERA_Z = 2.0;
 const MAX_CAMERA_Z = 5.3;
-const ROTATION_SPEED = 0.0062;
+const DRAG_ACTIVATION_PX = 2.5;
+const PINCH_EXPONENT = 0.92;
+const MAX_INERTIA_RAD_PER_MS = 0.0015;
+const INERTIA_DECAY_MS = 320;
+const INERTIA_STOP_RAD_PER_MS = 0.00002;
 const FOV_DEG = 40;
 const NEAR = 0.1;
 const FAR = 100;
@@ -353,73 +357,193 @@ window.addEventListener("resize", resize, { passive: true });
 window.visualViewport?.addEventListener("resize", resize, { passive: true });
 
 const pointers = new Map();
-let lastSingle = null;
+let dragState = null;
 let pinchStartDistance = 0;
 let pinchStartCameraZ = cameraZ;
-let twistStartAngle = 0;
-let twistStartWorldZ = worldZ;
+let gestureMode = "idle";
+
+let inertiaYaw = 0;
+let inertiaPitch = 0;
+let inertiaFrame = 0;
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const angleBetween = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
-const normalizeAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
 
-function beginTwoFingerGesture() {
+function rotationSensitivity() {
+  const minDim = Math.max(320, Math.min(window.innerWidth, window.innerHeight));
+  const base = 2.15 / minDim;
+  const zoomScale = Math.pow(cameraZ / 3.0, 0.42);
+  return Math.max(0.0032, Math.min(0.0063, base * zoomScale));
+}
+
+function stopInertia() {
+  if (inertiaFrame) cancelAnimationFrame(inertiaFrame);
+  inertiaFrame = 0;
+  inertiaYaw = 0;
+  inertiaPitch = 0;
+}
+
+function clampInertia() {
+  const speed = Math.hypot(inertiaYaw, inertiaPitch);
+  if (speed <= MAX_INERTIA_RAD_PER_MS || speed <= 1e-12) return;
+  const k = MAX_INERTIA_RAD_PER_MS / speed;
+  inertiaYaw *= k;
+  inertiaPitch *= k;
+}
+
+function startInertia() {
+  clampInertia();
+  if (Math.hypot(inertiaYaw, inertiaPitch) < INERTIA_STOP_RAD_PER_MS * 3) {
+    stopInertia();
+    return;
+  }
+
+  let last = performance.now();
+  const tick = now => {
+    const dt = Math.min(34, Math.max(1, now - last));
+    last = now;
+
+    worldY += inertiaYaw * dt;
+    const nextX = Math.max(-1.48, Math.min(1.48, worldX + inertiaPitch * dt));
+    if (nextX === -1.48 || nextX === 1.48) inertiaPitch = 0;
+    worldX = nextX;
+
+    const decay = Math.exp(-dt / INERTIA_DECAY_MS);
+    inertiaYaw *= decay;
+    inertiaPitch *= decay;
+
+    drawScene();
+
+    if (Math.hypot(inertiaYaw, inertiaPitch) > INERTIA_STOP_RAD_PER_MS) {
+      inertiaFrame = requestAnimationFrame(tick);
+    } else {
+      inertiaFrame = 0;
+      inertiaYaw = 0;
+      inertiaPitch = 0;
+    }
+  };
+  inertiaFrame = requestAnimationFrame(tick);
+}
+
+function beginSingleGesture(point) {
+  gestureMode = "drag";
+  dragState = {
+    x: point.x,
+    y: point.y,
+    startX: point.x,
+    startY: point.y,
+    t: point.t,
+    active: false
+  };
+  inertiaYaw = 0;
+  inertiaPitch = 0;
+}
+
+function beginPinchGesture() {
   const [a, b] = [...pointers.values()];
+  gestureMode = "pinch";
   pinchStartDistance = Math.max(1, distance(a, b));
   pinchStartCameraZ = cameraZ;
-  twistStartAngle = angleBetween(a, b);
-  twistStartWorldZ = worldZ;
-  lastSingle = null;
+  dragState = null;
+  inertiaYaw = 0;
+  inertiaPitch = 0;
 }
 
 canvas.addEventListener("pointerdown", e => {
   e.preventDefault();
+  stopInertia();
   canvas.setPointerCapture?.(e.pointerId);
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  document.body.classList.add("dragging", "interacted");
-  if (pointers.size === 1) lastSingle = { x: e.clientX, y: e.clientY };
-  else if (pointers.size === 2) beginTwoFingerGesture();
+
+  const point = { x: e.clientX, y: e.clientY, t: performance.now() };
+  pointers.set(e.pointerId, point);
+  document.body.classList.add("dragging");
+
+  if (pointers.size === 1) beginSingleGesture(point);
+  else if (pointers.size === 2) beginPinchGesture();
 }, { passive: false });
 
 canvas.addEventListener("pointermove", e => {
   if (!pointers.has(e.pointerId)) return;
   e.preventDefault();
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pointers.size === 1) {
-    const p = [...pointers.values()][0];
-    if (lastSingle) {
-      worldY += (p.x - lastSingle.x) * ROTATION_SPEED;
-      worldX += (p.y - lastSingle.y) * ROTATION_SPEED;
-      worldX = Math.max(-1.48, Math.min(1.48, worldX));
+
+  const now = performance.now();
+  const point = { x: e.clientX, y: e.clientY, t: now };
+  pointers.set(e.pointerId, point);
+
+  if (pointers.size === 1 && dragState) {
+    const dx = point.x - dragState.x;
+    const dy = point.y - dragState.y;
+    const total = Math.hypot(point.x - dragState.startX, point.y - dragState.startY);
+
+    if (!dragState.active && total >= DRAG_ACTIVATION_PX) {
+      dragState.active = true;
+      dragState.x = point.x;
+      dragState.y = point.y;
+      dragState.t = now;
+      return;
     }
-    lastSingle = { ...p };
-  } else if (pointers.size === 2) {
+
+    if (dragState.active) {
+      const sensitivity = rotationSensitivity();
+      const yawDelta = dx * sensitivity;
+      const wantedPitch = dy * sensitivity;
+      const nextX = Math.max(-1.48, Math.min(1.48, worldX + wantedPitch));
+      const appliedPitch = nextX - worldX;
+
+      worldY += yawDelta;
+      worldX = nextX;
+
+      const dt = Math.max(4, Math.min(40, now - dragState.t));
+      const targetYaw = yawDelta / dt;
+      const targetPitch = appliedPitch / dt;
+
+      inertiaYaw = inertiaYaw * 0.58 + targetYaw * 0.42;
+      inertiaPitch = inertiaPitch * 0.58 + targetPitch * 0.42;
+      clampInertia();
+
+      dragState.x = point.x;
+      dragState.y = point.y;
+      dragState.t = now;
+      requestRender();
+    }
+  } else if (pointers.size === 2 && gestureMode === "pinch") {
     const [a, b] = [...pointers.values()];
     const currentDistance = Math.max(1, distance(a, b));
-    const currentAngle = angleBetween(a, b);
-    cameraZ = Math.max(MIN_CAMERA_Z, Math.min(
-      MAX_CAMERA_Z,
-      pinchStartCameraZ * pinchStartDistance / currentDistance
-    ));
-    worldZ = twistStartWorldZ - normalizeAngle(currentAngle - twistStartAngle);
+    const ratio = currentDistance / pinchStartDistance;
+
+    cameraZ = Math.max(
+      MIN_CAMERA_Z,
+      Math.min(MAX_CAMERA_Z, pinchStartCameraZ / Math.pow(ratio, PINCH_EXPONENT))
+    );
+    requestRender();
   }
-  requestRender();
 }, { passive: false });
 
-function pointerUp(e) {
+function endPointer(e, cancelled = false) {
   e.preventDefault();
   pointers.delete(e.pointerId);
+
   if (!pointers.size) {
-    lastSingle = null;
+    const shouldGlide = !cancelled && gestureMode === "drag" && dragState?.active;
+    dragState = null;
+    gestureMode = "idle";
     document.body.classList.remove("dragging");
-  } else if (pointers.size === 1) {
-    lastSingle = { ...[...pointers.values()][0] };
+    if (shouldGlide) startInertia();
+    else stopInertia();
+    return;
+  }
+
+  stopInertia();
+
+  if (pointers.size === 1) {
+    const point = [...pointers.values()][0];
+    beginSingleGesture({ ...point, t: performance.now() });
   } else if (pointers.size === 2) {
-    beginTwoFingerGesture();
+    beginPinchGesture();
   }
 }
-canvas.addEventListener("pointerup", pointerUp, { passive: false });
-canvas.addEventListener("pointercancel", pointerUp, { passive: false });
+
+canvas.addEventListener("pointerup", e => endPointer(e, false), { passive: false });
+canvas.addEventListener("pointercancel", e => endPointer(e, true), { passive: false });
 
 const block = e => e.preventDefault();
 ["gesturestart","gesturechange","gestureend","contextmenu","dragstart","selectstart"].forEach(type =>
@@ -456,6 +580,4 @@ async function load() {
 
 load().catch(err => {
   console.error(err);
-  const hint = document.querySelector("#hint");
-  if (hint) hint.textContent = "地圖資料載入失敗";
 });
