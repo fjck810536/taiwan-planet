@@ -14,6 +14,8 @@ const MAX_SPIN_RAD_PER_MS = 0.0060;
 const SPIN_DECAY_MS = 1800;
 const SPIN_STOP_RAD_PER_MS = 0.000006;
 const PINCH_EXPONENT = 0.96;
+const CAMERA_TWIST_START_RAD = 2 * Math.PI / 180;
+const CAMERA_TWIST_STEP_EPS = 0.0015;
 const FOV_DEG = 40;
 const NEAR = 0.1;
 const FAR = 100;
@@ -42,6 +44,7 @@ const vertexShader = compile(gl.VERTEX_SHADER, `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aPosition;
 uniform mat3 uRot;
+uniform mat3 uViewRot;
 uniform float uRadius;
 uniform float uCameraZ;
 uniform float uAspect;
@@ -52,7 +55,7 @@ out vec3 vNormal;
 void main() {
   vec3 p = normalize(aPosition);
   vec3 world = uRot * (p * uRadius);
-  vec3 view = world - vec3(0.0, 0.0, uCameraZ);
+  vec3 view = uViewRot * (world - vec3(0.0, 0.0, uCameraZ));
   float A = (uFar + uNear) / (uNear - uFar);
   float B = (2.0 * uFar * uNear) / (uNear - uFar);
   gl_Position = vec4(
@@ -91,6 +94,7 @@ gl.deleteShader(fragmentShader);
 
 const U = {
   rot: gl.getUniformLocation(program, "uRot"),
+  viewRot: gl.getUniformLocation(program, "uViewRot"),
   radius: gl.getUniformLocation(program, "uRadius"),
   cameraZ: gl.getUniformLocation(program, "uCameraZ"),
   aspect: gl.getUniformLocation(program, "uAspect"),
@@ -116,6 +120,7 @@ let meta = null;
 let labelItems = [];
 let sphereIndexCount = 0;
 let orientation = [0, 0, 0, 1];
+let cameraRoll = 0;
 let cameraZ = 3.0;
 let renderQueued = false;
 
@@ -198,6 +203,20 @@ function quatToMat3(qRaw) {
 function rotationMatrix() {
   return quatToMat3(orientation);
 }
+
+function rotZMatrix(angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  return new Float32Array([
+    c, s, 0,
+    -s, c, 0,
+    0, 0, 1
+  ]);
+}
+
+function cameraViewMatrix() {
+  // Camera roll is represented as the inverse rotation applied to world->view.
+  return rotZMatrix(-cameraRoll);
+}
 function transform3(m, v) {
   const x = v[0], y = v[1], z = v[2];
   return [
@@ -253,10 +272,11 @@ function bindSnorm16Positions(buffer) {
   gl.enableVertexAttribArray(0);
 }
 
-function setCommonUniforms(rot) {
+function setCommonUniforms(rot, viewRot) {
   const width = Math.max(1, canvas.width);
   const height = Math.max(1, canvas.height);
   gl.uniformMatrix3fv(U.rot, false, rot);
+  gl.uniformMatrix3fv(U.viewRot, false, viewRot);
   gl.uniform1f(U.cameraZ, cameraZ);
   gl.uniform1f(U.aspect, width / height);
   gl.uniform1f(U.fovF, 1 / Math.tan((FOV_DEG * Math.PI / 180) / 2));
@@ -268,11 +288,12 @@ function drawScene() {
   renderQueued = false;
   if (!meta) return;
   const rot = rotationMatrix();
+  const viewRot = cameraViewMatrix();
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.useProgram(program);
-  setCommonUniforms(rot);
+  setCommonUniforms(rot, viewRot);
 
   bindFloatPositions(sphereBuffer);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereIndexBuffer);
@@ -296,7 +317,7 @@ function drawScene() {
   gl.uniform4f(U.color, 0.957, 0.969, 0.875, 0.52);
   gl.drawArrays(gl.LINES, 0, meta.borderVertices);
 
-  updateLabels(rot);
+  updateLabels(rot, viewRot);
 }
 
 function requestRender() {
@@ -319,7 +340,7 @@ function buildLabels() {
   });
 }
 
-function updateLabels(rot) {
+function updateLabels(rot, viewRot) {
   if (!labelItems.length) return;
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -336,14 +357,19 @@ function updateLabels(rot) {
     const world = unit.map(v => v * LABEL_RADIUS);
     const toCamera = normalize3([-world[0], -world[1], cameraZ - world[2]]);
     const facing = dot3(unit, toCamera);
-    const viewZ = world[2] - cameraZ;
+    const view = transform3(viewRot, [
+      world[0],
+      world[1],
+      world[2] - cameraZ
+    ]);
+    const viewZ = view[2];
     if (facing <= 0.035 || viewZ >= -0.01) {
       item.el.style.opacity = "0";
       continue;
     }
 
-    const ndcX = (world[0] * f / aspect) / (-viewZ);
-    const ndcY = (world[1] * f) / (-viewZ);
+    const ndcX = (view[0] * f / aspect) / (-viewZ);
+    const ndcY = (view[1] * f) / (-viewZ);
     const sx = (ndcX * 0.5 + 0.5) * width;
     const sy = (-ndcY * 0.5 + 0.5) * height;
     if (sx < -90 || sx > width + 90 || sy < -45 || sy > height + 45) {
@@ -390,11 +416,17 @@ let gestureMode = "idle";
 let dragState = null;
 let pinchStartDistance = 0;
 let pinchStartCameraZ = cameraZ;
+let pinchStartAngle = 0;
+let pinchLastAngle = 0;
+let pinchAccumulatedTwist = 0;
+let pinchTwistActive = false;
 
 let spinVelocity = [0, 0, 0];
 let spinFrame = 0;
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const angleBetween = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+const normalizeAngle = angle => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 function mapToArcball(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
@@ -498,6 +530,10 @@ function beginPinch() {
   gestureMode = "pinch";
   pinchStartDistance = Math.max(1, distance(a, b));
   pinchStartCameraZ = cameraZ;
+  pinchStartAngle = angleBetween(a, b);
+  pinchLastAngle = pinchStartAngle;
+  pinchAccumulatedTwist = 0;
+  pinchTwistActive = false;
   dragState = null;
   spinVelocity = [0, 0, 0];
 }
@@ -566,6 +602,21 @@ canvas.addEventListener("pointermove", e => {
         pinchStartCameraZ / Math.pow(ratio, PINCH_EXPONENT)
       )
     );
+
+    const currentAngle = angleBetween(a, b);
+    const twistStep = normalizeAngle(currentAngle - pinchLastAngle);
+    pinchAccumulatedTwist = normalizeAngle(currentAngle - pinchStartAngle);
+
+    if (!pinchTwistActive && Math.abs(pinchAccumulatedTwist) >= CAMERA_TWIST_START_RAD) {
+      pinchTwistActive = true;
+    }
+
+    if (pinchTwistActive && Math.abs(twistStep) >= CAMERA_TWIST_STEP_EPS) {
+      // Screen-space two-finger twist rotates the camera, never the globe quaternion.
+      cameraRoll = normalizeAngle(cameraRoll + twistStep);
+    }
+
+    pinchLastAngle = currentAngle;
     requestRender();
   }
 }, { passive: false });
