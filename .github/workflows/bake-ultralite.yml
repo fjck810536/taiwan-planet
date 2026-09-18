@@ -3,7 +3,7 @@ name: Bake ultralite Taiwan map
 on:
   push:
     branches:
-      - release/neihu170-ultralite
+      - release/neihu170-islands-v1
     paths:
       - feedback/geo.js
       - feedback/solver.js
@@ -21,7 +21,7 @@ jobs:
       - name: Checkout release branch
         uses: actions/checkout@v4
         with:
-          ref: release/neihu170-ultralite
+          ref: release/neihu170-islands-v1
           fetch-depth: 0
 
       - name: Set up Node
@@ -39,11 +39,11 @@ jobs:
         run: |
           git config user.name "taiwan-planet-bot"
           git config user.email "actions@users.noreply.github.com"
-          git pull --rebase origin release/neihu170-ultralite
+          git pull --rebase origin release/neihu170-islands-v1
           git add baked/map.bin baked/meta.json
           if git diff --cached --quiet; then
             echo "Baked assets unchanged."
             exit 0
           fi
           git commit -m "Bake ultralite Taiwan geometry"
-          git push origin HEAD:release/neihu170-ultralite
+          git push origin HEAD:release/neihu170-islands-v1
