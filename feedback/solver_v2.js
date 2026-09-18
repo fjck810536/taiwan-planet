@@ -488,8 +488,8 @@ export function buildSolvedProjection(features) {
     minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
     minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
   });
-  const centerLon = (minLon + maxLon) / 2;
-  const centerLat = (minLat + maxLat) / 2;
+  const centerLon = 121.60;
+  const centerLat = 25.25;
   const towns = buildTownStats(features, centerLon, centerLat);
   applyBasePolicy(towns);
   let p = buildProjectionFromTowns(features, centerLon, centerLat, towns);
