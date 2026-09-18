@@ -61,12 +61,12 @@ const shortName = value => String(value || "").replace(/[縣市]$/, "");
 // Reuse the original administrative TopoJSON for offshore islands.
 // These regions are decorative world-space patches: they do not participate in the mainland solver.
 const OFFSHORE_GROUPS = [
-  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null },
-  { id: "金門", label: "金門", county: "金門縣", towns: null },
-  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null },
-  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]) },
-  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]) },
-  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]) }
+  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null, scale: 2.6, labelOffset: [0, -16] },
+  { id: "金門", label: "金門", county: "金門縣", towns: null, scale: 2.9, labelOffset: [0, -16] },
+  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null, scale: 3.3, labelOffset: [0, -16] },
+  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]), scale: 4.8, labelOffset: [0, -16] },
+  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]), scale: 4.2, labelOffset: [0, -16] },
+  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]), scale: 5.4, labelOffset: [0, -16] }
 ];
 
 function rawMergedFeature(label, geometries) {
@@ -166,7 +166,10 @@ for (const group of offshoreById.values()) {
     id: group.id,
     label: group.label,
     colorSeed: group.id,
-    showLabel: false,
+    showLabel: true,
+    alwaysLabel: true,
+    labelOffset: group.labelOffset,
+    offshoreScale: group.scale,
     offshore: true
   });
 }
@@ -183,6 +186,30 @@ const mappedUnit = coord =>
 const sourceXY = (lon,lat) =>
   renderSolver.sourceLocalXYForProjection(lon,lat,projection);
 
+function scaleUnitAroundAnchor(unit, anchor, scale = 1) {
+  if (!(scale > 1)) return unit.clone().normalize();
+
+  const a = anchor.clone().normalize();
+  const u = unit.clone().normalize();
+  const dot = THREE.MathUtils.clamp(a.dot(u), -1, 1);
+  const angle = Math.acos(dot);
+  if (angle < 1e-10) return a;
+
+  const tangent = u.clone().addScaledVector(a, -dot);
+  if (tangent.lengthSq() < 1e-16) return a;
+  tangent.normalize();
+
+  const scaledAngle = Math.min(Math.PI - 1e-5, angle * scale);
+  return a.multiplyScalar(Math.cos(scaledAngle))
+    .add(tangent.multiplyScalar(Math.sin(scaledAngle)))
+    .normalize();
+}
+
+function mapperForItem(item, anchor) {
+  if (!item.offshore || !(item.offshoreScale > 1)) return mappedUnit;
+  return coord => scaleUnitAroundAnchor(mappedUnit(coord), anchor, item.offshoreScale);
+}
+
 function pushUnit(target, v) {
   const n = v.clone().normalize();
   target.push(
@@ -192,22 +219,22 @@ function pushUnit(target, v) {
   );
 }
 
-function emitTriangle(target,a,b,c,depth=0) {
-  const ua=mappedUnit(a), ub=mappedUnit(b), uc=mappedUnit(c);
+function emitTriangle(target,a,b,c,mapper,depth=0) {
+  const ua=mapper(a), ub=mapper(b), uc=mapper(c);
   const maxEdge=Math.max(ua.angleTo(ub),ub.angleTo(uc),uc.angleTo(ua));
   if (maxEdge > THREE.MathUtils.degToRad(MAX_MESH_EDGE_DEG) && depth < 6) {
     const ab=midpointCoord(a,b), bc=midpointCoord(b,c), ca=midpointCoord(c,a);
-    emitTriangle(target,a,ab,ca,depth+1);
-    emitTriangle(target,ab,b,bc,depth+1);
-    emitTriangle(target,ca,bc,c,depth+1);
-    emitTriangle(target,ab,bc,ca,depth+1);
+    emitTriangle(target,a,ab,ca,mapper,depth+1);
+    emitTriangle(target,ab,b,bc,mapper,depth+1);
+    emitTriangle(target,ca,bc,c,mapper,depth+1);
+    emitTriangle(target,ab,bc,ca,mapper,depth+1);
     return;
   }
   pushUnit(target,ua); pushUnit(target,ub); pushUnit(target,uc);
 }
 
-function addBorder(a,b) {
-  const ua=mappedUnit(a), ub=mappedUnit(b);
+function addBorder(a,b,mapper) {
+  const ua=mapper(a), ub=mapper(b);
   const steps=Math.max(1,Math.ceil(
     THREE.MathUtils.radToDeg(ua.angleTo(ub))/MAX_BORDER_EDGE_DEG
   ));
@@ -215,13 +242,13 @@ function addBorder(a,b) {
   for (let i=1;i<=steps;i++) {
     const t=i/steps;
     const next=[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
-    pushUnit(borders,mappedUnit(prev));
-    pushUnit(borders,mappedUnit(next));
+    pushUnit(borders,mapper(prev));
+    pushUnit(borders,mapper(next));
     prev=next;
   }
 }
 
-function addPolygon(featurePolygon) {
+function addPolygon(featurePolygon,mapper) {
   if (!featurePolygon?.length) return;
   const outer=geo.cleanRing(featurePolygon[0]);
   if (outer.length<3) return;
@@ -230,21 +257,22 @@ function addPolygon(featurePolygon) {
   const holeContours=holes.map(r=>r.map(([lon,lat])=>sourceXY(lon,lat)));
   const faces=THREE.ShapeUtils.triangulateShape(contour,holeContours);
   const all=outer.concat(...holes);
-  for (const tri of faces) emitTriangle(land,all[tri[0]],all[tri[1]],all[tri[2]]);
+  for (const tri of faces) emitTriangle(land,all[tri[0]],all[tri[1]],all[tri[2]],mapper);
   for (const ring of [outer,...holes]) {
-    for (let i=0;i<ring.length;i++) addBorder(ring[i],ring[(i+1)%ring.length]);
+    for (let i=0;i<ring.length;i++) addBorder(ring[i],ring[(i+1)%ring.length],mapper);
   }
 }
 
 for (const item of display) {
-  const start=land.length/3;
-  const g=item.feature.geometry;
-  if (g.type==="Polygon") addPolygon(g.coordinates);
-  else if (g.type==="MultiPolygon") for (const p of g.coordinates) addPolygon(p);
-  const count=land.length/3-start;
-
   const [lon,lat]=geo.centroidOfFeature(item.feature);
   const anchor=mappedUnit([lon,lat]);
+  const mapper=mapperForItem(item,anchor);
+
+  const start=land.length/3;
+  const g=item.feature.geometry;
+  if (g.type==="Polygon") addPolygon(g.coordinates,mapper);
+  else if (g.type==="MultiPolygon") for (const p of g.coordinates) addPolygon(p,mapper);
+  const count=land.length/3-start;
   const anchorQ=[
     Math.round(anchor.x*32767),
     Math.round(anchor.y*32767),
@@ -256,6 +284,9 @@ for (const item of display) {
     label:item.label,
     colorSeed:item.colorSeed,
     showLabel:item.showLabel !== false,
+    alwaysLabel:item.alwaysLabel === true,
+    labelOffset:item.labelOffset || [0,0],
+    offshoreScale:item.offshoreScale || 1,
     offshore:item.offshore === true,
     start,
     count,
@@ -271,7 +302,7 @@ const binary=Buffer.concat([
 ]);
 
 const meta={
-  version:2,
+  version:3,
   projection:"stereographic-neihu-170-baked",
   quantization:"snorm16",
   landValues:landArray.length,
@@ -284,7 +315,7 @@ const meta={
     newTaipei:"districts",
     keelung:"merged",
     sameNameCountyCity:"merged-by-short-name",
-    offshore:"source-topology-decorative-layer"
+    offshore:"source-topology-separate-layer-spherical-local-scale"
   }
 };
 
