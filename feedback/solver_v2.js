@@ -52,7 +52,7 @@ const DIRECTIONAL_RECEIVER_FLOOR = 0.055;
 const OUTLINE_PRIORITY_EXTRA = 0.10;
 const OUTLINE_PRIORITY_SIGMA_MIN = 0.010;
 const OUTLINE_PRIORITY_SIGMA_MAX = 0.024;
-const RELATIVE_SHRINK_TARGET = 0.90;
+const RELATIVE_SHRINK_TARGET = 0.80;
 const RELATIVE_SHRINK_LINEAR_AMP = 1 - Math.sqrt(RELATIVE_SHRINK_TARGET);
 const RELATIVE_SHRINK_GROUPS = [
   ["南投", new Set(["南投縣"])],
@@ -586,6 +586,6 @@ export function buildSolvedProjection(features) {
   p.relativeShrinkTarget = RELATIVE_SHRINK_TARGET;
   p.towns = towns;
   p.feedbackPasses = FEEDBACK_PASSES;
-  p.policyVersion = "outline146+relative-shrink090+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
+  p.policyVersion = "outline146+relative-shrink080+priority10+visible-boost-v2+high-outlier-donor1.3+xinyi-local1.2";
   return p;
 }
