@@ -61,12 +61,21 @@ const shortName = value => String(value || "").replace(/[縣市]$/, "");
 // Reuse the original administrative TopoJSON for offshore islands.
 // These regions are decorative world-space patches: they do not participate in the mainland solver.
 const OFFSHORE_GROUPS = [
-  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null, scale: 2.6, labelOffset: [0, -16] },
-  { id: "金門", label: "金門", county: "金門縣", towns: null, scale: 2.9, labelOffset: [0, -16] },
-  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null, scale: 3.3, labelOffset: [0, -16] },
-  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]), scale: 4.8, labelOffset: [0, -16] },
-  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]), scale: 4.2, labelOffset: [0, -16] },
-  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]), scale: 5.4, labelOffset: [0, -16] }
+  // reference = nearby mainland point used only to establish the final globe's local east/north basis.
+  // bearing/distance place the island on the FINAL sphere, independent of the mainland solver.
+  // radius is the desired cartogram angular radius on the globe.
+  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null,
+    reference: [120.18, 23.50], bearingDeg: 270, distanceDeg: 42, radiusDeg: 26, labelOffset: [0, -18] },
+  { id: "金門", label: "金門", county: "金門縣", towns: null,
+    reference: [120.25, 24.35], bearingDeg: 255, distanceDeg: 68, radiusDeg: 24, labelOffset: [0, -18] },
+  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null,
+    reference: [121.05, 25.18], bearingDeg: 315, distanceDeg: 58, radiusDeg: 23, labelOffset: [0, -18] },
+  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]),
+    reference: [121.10, 22.78], bearingDeg: 90, distanceDeg: 38, radiusDeg: 20, labelOffset: [0, -18] },
+  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]),
+    reference: [121.08, 22.38], bearingDeg: 125, distanceDeg: 58, radiusDeg: 24, labelOffset: [0, -18] },
+  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]),
+    reference: [120.50, 22.47], bearingDeg: 245, distanceDeg: 28, radiusDeg: 19, labelOffset: [0, -18] }
 ];
 
 function rawMergedFeature(label, geometries) {
@@ -169,7 +178,12 @@ for (const group of offshoreById.values()) {
     showLabel: true,
     alwaysLabel: true,
     labelOffset: group.labelOffset,
-    offshoreScale: group.scale,
+    offshorePlacement: {
+      reference: group.reference,
+      bearingDeg: group.bearingDeg,
+      distanceDeg: group.distanceDeg,
+      radiusDeg: group.radiusDeg
+    },
     offshore: true
   });
 }
@@ -186,28 +200,103 @@ const mappedUnit = coord =>
 const sourceXY = (lon,lat) =>
   renderSolver.sourceLocalXYForProjection(lon,lat,projection);
 
-function scaleUnitAroundAnchor(unit, anchor, scale = 1) {
-  if (!(scale > 1)) return unit.clone().normalize();
+function tangentize(candidate, anchor) {
+  const tangent = candidate.clone().addScaledVector(anchor, -candidate.dot(anchor));
+  if (tangent.lengthSq() < 1e-16) return null;
+  return tangent.normalize();
+}
 
-  const a = anchor.clone().normalize();
-  const u = unit.clone().normalize();
-  const dot = THREE.MathUtils.clamp(a.dot(u), -1, 1);
-  const angle = Math.acos(dot);
-  if (angle < 1e-10) return a;
+function finalSphereBasis(reference) {
+  const anchor = mappedUnit(reference);
+  const eps = 0.02;
 
-  const tangent = u.clone().addScaledVector(a, -dot);
-  if (tangent.lengthSq() < 1e-16) return a;
-  tangent.normalize();
+  let east = tangentize(mappedUnit([reference[0] + eps, reference[1]]), anchor);
+  let north = tangentize(mappedUnit([reference[0], reference[1] + eps]), anchor);
 
-  const scaledAngle = Math.min(Math.PI - 1e-5, angle * scale);
-  return a.multiplyScalar(Math.cos(scaledAngle))
-    .add(tangent.multiplyScalar(Math.sin(scaledAngle)))
+  if (!east) east = new THREE.Vector3(1,0,0).cross(anchor).normalize();
+  if (!north) north = anchor.clone().cross(east).normalize();
+
+  // Gram-Schmidt keeps the two local axes stable even in strongly warped areas.
+  north = north.addScaledVector(east, -north.dot(east)).normalize();
+
+  // Preserve a right-handed tangent frame.
+  if (east.clone().cross(north).dot(anchor) < 0) east.multiplyScalar(-1);
+
+  return { anchor, east, north };
+}
+
+function moveOnSphere(anchor, tangent, angleRad) {
+  return anchor.clone().multiplyScalar(Math.cos(angleRad))
+    .add(tangent.clone().multiplyScalar(Math.sin(angleRad)))
     .normalize();
 }
 
-function mapperForItem(item, anchor) {
-  if (!item.offshore || !(item.offshoreScale > 1)) return mappedUnit;
-  return coord => scaleUnitAroundAnchor(mappedUnit(coord), anchor, item.offshoreScale);
+function cartogramPlacement(item) {
+  const p = item.offshorePlacement;
+  const basis = finalSphereBasis(p.reference);
+  const bearing = THREE.MathUtils.degToRad(p.bearingDeg);
+  const dir = basis.east.clone().multiplyScalar(Math.sin(bearing))
+    .add(basis.north.clone().multiplyScalar(Math.cos(bearing)))
+    .normalize();
+
+  const anchor = moveOnSphere(
+    basis.anchor,
+    dir,
+    THREE.MathUtils.degToRad(p.distanceDeg)
+  );
+
+  // Transport a visual east direction to the target anchor, then derive north.
+  let east = basis.east.clone().addScaledVector(anchor, -basis.east.dot(anchor));
+  if (east.lengthSq() < 1e-16) east = basis.north.clone().cross(anchor);
+  east.normalize();
+  let north = anchor.clone().cross(east).normalize();
+
+  if (east.clone().cross(north).dot(anchor) < 0) north.multiplyScalar(-1);
+
+  const center = geo.centroidOfFeature(item.feature);
+  const cosLat = Math.max(0.2, Math.cos(THREE.MathUtils.degToRad(center[1])));
+
+  let maxR = 1e-9;
+  geo.eachCoordinate(item.feature.geometry, ([lon,lat]) => {
+    const dx = (lon - center[0]) * cosLat;
+    const dy = lat - center[1];
+    maxR = Math.max(maxR, Math.hypot(dx,dy));
+  });
+
+  const targetRadius = THREE.MathUtils.degToRad(p.radiusDeg);
+
+  const mapper = ([lon,lat]) => {
+    const dx = (lon - center[0]) * cosLat;
+    const dy = lat - center[1];
+    const r = Math.hypot(dx,dy);
+    if (r < 1e-12) return anchor.clone();
+
+    const localDir = east.clone().multiplyScalar(dx/r)
+      .add(north.clone().multiplyScalar(dy/r))
+      .normalize();
+
+    return moveOnSphere(
+      anchor,
+      localDir,
+      Math.min(Math.PI * 0.48, targetRadius * (r/maxR))
+    );
+  };
+
+  const planar = ([lon,lat]) =>
+    new THREE.Vector2((lon-center[0])*cosLat, lat-center[1]);
+
+  return { anchor, mapper, planar };
+}
+
+function mapperForItem(item) {
+  if (!item.offshore) {
+    return {
+      anchor: null,
+      mapper: mappedUnit,
+      planar: ([lon,lat]) => sourceXY(lon,lat)
+    };
+  }
+  return cartogramPlacement(item);
 }
 
 function pushUnit(target, v) {
@@ -248,13 +337,13 @@ function addBorder(a,b,mapper) {
   }
 }
 
-function addPolygon(featurePolygon,mapper) {
+function addPolygon(featurePolygon,mapper,planar) {
   if (!featurePolygon?.length) return;
   const outer=geo.cleanRing(featurePolygon[0]);
   if (outer.length<3) return;
   const holes=featurePolygon.slice(1).map(geo.cleanRing).filter(r=>r.length>=3);
-  const contour=outer.map(([lon,lat])=>sourceXY(lon,lat));
-  const holeContours=holes.map(r=>r.map(([lon,lat])=>sourceXY(lon,lat)));
+  const contour=outer.map(planar);
+  const holeContours=holes.map(r=>r.map(planar));
   const faces=THREE.ShapeUtils.triangulateShape(contour,holeContours);
   const all=outer.concat(...holes);
   for (const tri of faces) emitTriangle(land,all[tri[0]],all[tri[1]],all[tri[2]],mapper);
@@ -265,13 +354,15 @@ function addPolygon(featurePolygon,mapper) {
 
 for (const item of display) {
   const [lon,lat]=geo.centroidOfFeature(item.feature);
-  const anchor=mappedUnit([lon,lat]);
-  const mapper=mapperForItem(item,anchor);
+  const placement=mapperForItem(item);
+  const anchor=placement.anchor || mappedUnit([lon,lat]);
+  const mapper=placement.mapper;
+  const planar=placement.planar;
 
   const start=land.length/3;
   const g=item.feature.geometry;
-  if (g.type==="Polygon") addPolygon(g.coordinates,mapper);
-  else if (g.type==="MultiPolygon") for (const p of g.coordinates) addPolygon(p,mapper);
+  if (g.type==="Polygon") addPolygon(g.coordinates,mapper,planar);
+  else if (g.type==="MultiPolygon") for (const p of g.coordinates) addPolygon(p,mapper,planar);
   const count=land.length/3-start;
   const anchorQ=[
     Math.round(anchor.x*32767),
@@ -286,7 +377,9 @@ for (const item of display) {
     showLabel:item.showLabel !== false,
     alwaysLabel:item.alwaysLabel === true,
     labelOffset:item.labelOffset || [0,0],
-    offshoreScale:item.offshoreScale || 1,
+    offshoreRadiusDeg:item.offshorePlacement?.radiusDeg || 0,
+    offshoreBearingDeg:item.offshorePlacement?.bearingDeg ?? null,
+    offshoreDistanceDeg:item.offshorePlacement?.distanceDeg ?? null,
     offshore:item.offshore === true,
     start,
     count,
@@ -302,7 +395,7 @@ const binary=Buffer.concat([
 ]);
 
 const meta={
-  version:3,
+  version:4,
   projection:"stereographic-neihu-170-baked",
   quantization:"snorm16",
   landValues:landArray.length,
@@ -315,7 +408,7 @@ const meta={
     newTaipei:"districts",
     keelung:"merged",
     sameNameCountyCity:"merged-by-short-name",
-    offshore:"source-topology-separate-layer-spherical-local-scale"
+    offshore:"independent-final-sphere-cartogram-layer"
   }
 };
 
