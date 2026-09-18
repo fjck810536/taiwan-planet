@@ -1,11 +1,42 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import {
   featureKey, featureTownName, featureCountyName, centroidOfFeature, eachCoordinate,
-  cleanRing, sourcePolar, featureGeoArea, sphericalTriangleArea
+  cleanRing, sourcePolar, featureGeoArea, geoUnitVector, sphericalTriangleArea
 } from "./geo.js";
 
 export const TARGET_MAX_COLAT_DEG = 146;
 export const FINAL_AUDIT_EDGE_DEG = 1.5;
+
+const TAIPEI_CORE_TOWNS = new Set([
+  "大同區", "中山區", "中正區", "大安區", "松山區", "信義區"
+]);
+
+function taipeiCoreAreaWeightedCenter(features) {
+  const core = features.filter(feature =>
+    featureCountyName(feature) === "台北市" &&
+    TAIPEI_CORE_TOWNS.has(featureTownName(feature))
+  );
+  if (!core.length) throw new Error("找不到台北六區，無法建立 LAEA 中心");
+
+  const sum = new THREE.Vector3();
+  let totalWeight = 0;
+  for (const feature of core) {
+    const [lon, lat] = centroidOfFeature(feature);
+    // Spherical area is the weight; the fixed nearby triangulation center is
+    // only used to construct the polygon triangulation robustly.
+    const weight = Math.max(featureGeoArea(feature, 121.53, 25.05), 1e-12);
+    sum.addScaledVector(geoUnitVector(lon, lat), weight);
+    totalWeight += weight;
+  }
+  if (!(totalWeight > 0) || sum.lengthSq() < 1e-18) {
+    throw new Error("台北六區面積加權中心計算失敗");
+  }
+
+  sum.normalize();
+  const lon = THREE.MathUtils.radToDeg(Math.atan2(sum.y, sum.x));
+  const lat = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(sum.z, -1, 1)));
+  return [lon, lat];
+}
 
 function laeaXY(centerLon, centerLat, lon, lat) {
   const { angle, bearing } = sourcePolar(centerLon, centerLat, lon, lat);
@@ -112,14 +143,7 @@ export function auditProjectedAreas(towns,p,edgeDeg,logTables=false) {
 }
 
 export function buildSolvedProjection(features) {
-  let minLon=Infinity,maxLon=-Infinity,minLat=Infinity,maxLat=-Infinity;
-  for (const f of features) eachCoordinate(f.geometry,([lon,lat])=>{
-    minLon=Math.min(minLon,lon); maxLon=Math.max(maxLon,lon);
-    minLat=Math.min(minLat,lat); maxLat=Math.max(maxLat,lat);
-  });
-
-  const centerLon=(minLon+maxLon)/2;
-  const centerLat=(minLat+maxLat)/2;
+  const [centerLon, centerLat] = taipeiCoreAreaWeightedCenter(features);
   let maxSourceRho=1e-12;
   for (const f of features) eachCoordinate(f.geometry,([lon,lat])=>{
     maxSourceRho=Math.max(maxSourceRho,laeaXY(centerLon,centerLat,lon,lat).length());
@@ -132,7 +156,7 @@ export function buildSolvedProjection(features) {
     centerLon,centerLat,maxSourceRho,targetMaxRho,
     equalAreaScale:targetMaxRho/maxSourceRho,
     feedbackPasses:0,
-    policyVersion:"laea146-pure-real-area-baseline"
+    policyVersion:"laea146-taipei-core-area-weighted-center"
   };
   p.towns=buildTowns(features,centerLon,centerLat);
   return p;
