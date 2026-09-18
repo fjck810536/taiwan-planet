@@ -1,6 +1,6 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import { featureTownName, featureCountyName, featureKey, centroidOfFeature, cleanRing } from "./geo.js";
-import { geoToVector3WithProjection, sourceLocalXYForProjection } from "./solver.js";
+import { geoToVector3WithProjection, sourceLocalXYForProjection } from "./solver_laea.js";
 
 const RADIUS = 1;
 const MAX_MESH_EDGE_DEG = 5;
