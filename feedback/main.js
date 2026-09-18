@@ -24,7 +24,8 @@ function mergedDisplayFeature(topology, county, label, geometries) {
     type: "Feature",
     properties: {
       COUNTYNAME: county,
-      TOWNNAME: label
+      TOWNNAME: label,
+      DISPLAY_LABEL: label
     },
     geometry
   });
