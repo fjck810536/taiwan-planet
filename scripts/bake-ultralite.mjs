@@ -65,17 +65,17 @@ const OFFSHORE_GROUPS = [
   // bearing/distance place the island on the FINAL sphere, independent of the mainland solver.
   // radius is the desired cartogram angular radius on the globe.
   { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null,
-    reference: [120.18, 23.50], bearingDeg: 270, distanceDeg: 42, radiusDeg: 26, labelOffset: [0, -18] },
+    reference: [120.18, 23.50], bearingDeg: 270, distanceDeg: 42, radiusDeg: 42, labelOffset: [0, -18] },
   { id: "金門", label: "金門", county: "金門縣", towns: null,
-    reference: [120.25, 24.35], bearingDeg: 255, distanceDeg: 68, radiusDeg: 24, labelOffset: [0, -18] },
+    reference: [120.25, 24.35], bearingDeg: 255, distanceDeg: 68, radiusDeg: 38, labelOffset: [0, -18] },
   { id: "馬祖", label: "馬祖", county: "連江縣", towns: null,
-    reference: [121.05, 25.18], bearingDeg: 315, distanceDeg: 58, radiusDeg: 23, labelOffset: [0, -18] },
+    reference: [121.05, 25.18], bearingDeg: 315, distanceDeg: 58, radiusDeg: 36, labelOffset: [0, -18] },
   { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]),
-    reference: [121.10, 22.78], bearingDeg: 90, distanceDeg: 38, radiusDeg: 20, labelOffset: [0, -18] },
+    reference: [121.10, 22.78], bearingDeg: 90, distanceDeg: 38, radiusDeg: 8, labelOffset: [0, -18] },
   { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]),
-    reference: [121.08, 22.38], bearingDeg: 125, distanceDeg: 58, radiusDeg: 24, labelOffset: [0, -18] },
+    reference: [121.08, 22.38], bearingDeg: 125, distanceDeg: 58, radiusDeg: 10, labelOffset: [0, -18] },
   { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]),
-    reference: [120.50, 22.47], bearingDeg: 245, distanceDeg: 28, radiusDeg: 19, labelOffset: [0, -18] }
+    reference: [120.50, 22.47], bearingDeg: 245, distanceDeg: 28, radiusDeg: 7, labelOffset: [0, -18] }
 ];
 
 function rawMergedFeature(label, geometries) {
