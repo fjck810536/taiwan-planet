@@ -1,40 +1,49 @@
 # Taiwan Planet
 
-一顆以台灣拓撲重新設計的互動小行星。
+一顆把台灣行政區拓撲重新投影到球面的互動小行星。
 
-目前是 **v0.1 手感原型**：不是把真實經緯度地圖直接貼到球上，而是把台灣拉伸成一顆行星上的主要陸地，並把台北的 **大同、中山、中正、大安、松山、信義** 六區安排成北極冠。
+## 正式版本
 
-## v0.1 已完成
+`main` 是唯一權威版本（canonical version）。
 
-- 單一 `index.html`，可直接作為靜態網站執行
-- Three.js WebGL 球體
-- 台灣拓撲化陸地 + 海洋球面
-- 六區位於北極附近
-- 行政區名稱使用 HTML overlay，旋轉球體時文字永遠朝上
-- 球背標籤自動隱藏
-- 單指拖曳旋轉
-- 雙指 pinch 縮放
-- iOS / Safari 原生頁面縮放、double-tap zoom、長按選單、文字選取、拖曳等互動鎖定
-- 沒有行政區點擊、選取或資訊面板
+目前正式視覺基準來自 commit `08e59f4c36899a3cf818d0a671f58dc78fe3c06c`，之後的 main commit 只做結構清理與維護，除非 commit 訊息另有說明。
+
+## 目前設計
+
+- 台北六區（大同、中山、中正、大安、松山、信義）構成北極核心。
+- 本島與行政區經離線 solver 重新投影到球面。
+- 澎湖、金門、馬祖、綠島、蘭嶼、小琉球使用獨立的球面 cartogram layer。
+- 行政區標籤使用 HTML overlay，旋轉時保持正向。
+- 單指拖曳旋轉。
+- 雙指縮放／扭轉。
+- iOS Safari 的頁面縮放、長按選單、文字選取等原生干擾手勢被鎖定。
+- 沒有行政區點擊、選取或資訊面板。
+
+## 正式 runtime
+
+玩家端實際需要：
+
+- `index.html`
+- `feedback/ultralite.js`
+- `feedback/palette.js`
+- `baked/meta.json`
+- `baked/map.bin`
+
+## Bake pipeline
+
+以下檔案只用於重新產生球面幾何：
+
+- `feedback/geo.js`
+- `feedback/solver.js`
+- `feedback/solver_v2.js`
+- `scripts/bake-ultralite.mjs`
+- `.github/workflows/bake-ultralite.yml`
+
+修改 solver 或離島 cartogram 參數後，GitHub Actions 會在 `main` 上重新產生 `baked/map.bin` 與 `baked/meta.json`。
 
 ## 操作
 
-- **單指拖曳**：轉動行星
-- **雙指 pinch**：縮放
+- **單指拖曳**：旋轉行星
+- **雙指**：縮放／扭轉
 
 除此之外沒有可點擊 UI。
-
-## 現階段的拓撲定義
-
-v0.1 的海岸線與北極六區分界是刻意簡化的示意拓撲，目標是先驗證：
-
-1. 「六區作為北極」在球面上是否成立。
-2. 手機上拖曳 / pinch 的手感是否正確。
-3. HTML 標籤是否能在 3D 球旋轉時保持永遠向上。
-4. iOS Safari 是否被鎖到只剩我們自己定義的手勢。
-
-下一階段再把正式台灣行政區 GeoJSON / TopoJSON 轉成球面 mesh，保留相鄰關係後重新投影。
-
-## 執行
-
-直接開啟 `index.html` 即可；若瀏覽器限制 `file://` 載入 ES module，請用任意靜態伺服器或 GitHub Pages 開啟。
