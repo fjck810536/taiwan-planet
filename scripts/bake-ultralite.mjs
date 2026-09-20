@@ -58,6 +58,15 @@ const NEW_TAIPEI = "新北市";
 const KEELUNG = "基隆市";
 const shortName = value => String(value || "").replace(/[縣市]$/, "");
 
+const POLAR_CORE_REGION_IDS = [
+  "台北市|大同區",
+  "台北市|中山區",
+  "台北市|中正區",
+  "台北市|大安區",
+  "台北市|松山區",
+  "台北市|信義區"
+];
+
 // Reuse the original administrative TopoJSON for offshore islands.
 // These regions are decorative world-space patches: they do not participate in the mainland solver.
 const OFFSHORE_GROUPS = [
@@ -193,6 +202,11 @@ const MAX_BORDER_EDGE_DEG = 4;
 const land = [];
 const borders = [];
 const regions = [];
+
+const normalize3 = v => {
+  const d = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / d, v[1] / d, v[2] / d];
+};
 
 const midpointCoord = (a,b) => [(a[0]+b[0])/2,(a[1]+b[1])/2];
 const mappedUnit = coord =>
@@ -387,6 +401,21 @@ for (const item of display) {
   });
 }
 
+const polarCoreAnchors = POLAR_CORE_REGION_IDS.map(id => {
+  const region = regions.find(item => item.id === id);
+  if (!region) throw new Error(`Polar core region missing: ${id}`);
+  return normalize3(region.anchor.map(v => v / 32767));
+});
+
+const northPole = normalize3(
+  polarCoreAnchors.reduce(
+    (sum, v) => [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]],
+    [0, 0, 0]
+  )
+);
+const southPole = northPole.map(v => -v);
+const quantizePole = v => v.map(value => Math.round(value * 32767));
+
 const landArray=Int16Array.from(land);
 const borderArray=Int16Array.from(borders);
 const binary=Buffer.concat([
@@ -403,6 +432,12 @@ const meta={
   landVertices:landArray.length/3,
   borderVertices:borderArray.length/3,
   regions,
+  poles:{
+    definition:"mean-normalized-anchor-of-six-central-taipei-districts",
+    basisRegionIds:POLAR_CORE_REGION_IDS,
+    north:quantizePole(northPole),
+    south:quantizePole(southPole)
+  },
   grouping:{
     taipei:"districts",
     newTaipei:"districts",

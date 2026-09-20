@@ -134,7 +134,19 @@ const sphereIndexBuffer = gl.createBuffer();
 
 let meta = null;
 let labelItems = [];
+let poleItems = [];
 let sphereIndexCount = 0;
+
+const POLAR_CORE_REGION_IDS = [
+  "台北市|大同區",
+  "台北市|中山區",
+  "台北市|中正區",
+  "台北市|大安區",
+  "台北市|松山區",
+  "台北市|信義區"
+];
+
+const INITIAL_NORTH_VIEW = normalize3([0, 0.82, 0.58]);
 
 // One pose only: camera trackball orientation.
 // This quaternion maps world axes into camera/view axes.
@@ -367,12 +379,100 @@ function drawScene() {
   gl.drawArrays(gl.LINES, 0, meta.borderVertices);
 
   updateLabels(viewRot);
+  updatePoleMarkers(viewRot);
 }
 
 function requestRender() {
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(drawScene);
+}
+
+function resolvePoleAnchors() {
+  if (meta?.poles?.north && meta?.poles?.south) {
+    return {
+      north: normalize3(meta.poles.north.map(v => v / 32767)),
+      south: normalize3(meta.poles.south.map(v => v / 32767))
+    };
+  }
+
+  const anchors = POLAR_CORE_REGION_IDS.map(id => {
+    const region = meta.regions.find(item => item.id === id);
+    if (!region) throw new Error(`Polar core region missing: ${id}`);
+    return normalize3(region.anchor.map(v => v / 32767));
+  });
+
+  const north = normalize3(
+    anchors.reduce(
+      (sum, v) => [sum[0] + v[0], sum[1] + v[1], sum[2] + v[2]],
+      [0, 0, 0]
+    )
+  );
+
+  return {
+    north,
+    south: north.map(v => -v)
+  };
+}
+
+function buildPoleMarkers() {
+  const poles = resolvePoleAnchors();
+
+  poleItems = [
+    { id: "north", anchor: poles.north },
+    { id: "south", anchor: poles.south }
+  ].map(item => {
+    const el = document.createElement("div");
+    el.className = `pole-point ${item.id}`;
+    el.dataset.pole = item.id;
+    labelsLayer.appendChild(el);
+    return { ...item, el };
+  });
+
+  cameraViewQuat = quatFromUnitVectors(poles.north, INITIAL_NORTH_VIEW);
+}
+
+function updatePoleMarkers(viewRot) {
+  if (!poleItems.length) return;
+
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const aspect = Math.max(1e-6, canvas.width / Math.max(1, canvas.height));
+  const f = 1 / Math.tan((FOV_DEG * Math.PI / 180) / 2);
+  const radius = BORDER_RADIUS + 0.006;
+
+  for (const item of poleItems) {
+    const cameraUnit = normalize3(transform3(viewRot, item.anchor));
+    const rotated = cameraUnit.map(v => v * radius);
+    const toCamera = normalize3([
+      -rotated[0],
+      -rotated[1],
+      cameraZ - rotated[2]
+    ]);
+    const facing = dot3(cameraUnit, toCamera);
+    const viewZ = rotated[2] - cameraZ;
+
+    if (facing <= 0.0 || viewZ >= -0.01) {
+      item.el.style.opacity = "0";
+      continue;
+    }
+
+    const ndcX = (rotated[0] * f / aspect) / (-viewZ);
+    const ndcY = (rotated[1] * f) / (-viewZ);
+    const sx = (ndcX * 0.5 + 0.5) * width;
+    const sy = (-ndcY * 0.5 + 0.5) * height;
+
+    if (sx < -16 || sx > width + 16 || sy < -16 || sy > height + 16) {
+      item.el.style.opacity = "0";
+      continue;
+    }
+
+    item.el.style.transform =
+      `translate3d(${sx}px,${sy}px,0) translate(-50%,-50%)`;
+    item.el.style.opacity = String(
+      Math.max(0, Math.min(1, facing * 4.0))
+    );
+  }
 }
 
 function buildLabels() {
@@ -913,6 +1013,7 @@ async function load() {
 
   buildSphere();
   buildLabels();
+  buildPoleMarkers();
   resize();
 
   document.body.classList.add("ready");
