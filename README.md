@@ -1,6 +1,8 @@
 # Taiwan Planet
 
-一顆把台灣行政區拓撲重新投影成球面的互動小行星。
+用於解決台灣人有時候搞不清楚所謂「南部、北部」的北本位地圖。
+
+**一鍵知道北部在哪。**
 
 ## [▶ 直接玩 Taiwan Planet](https://fjck810536.github.io/taiwan-planet/)
 
