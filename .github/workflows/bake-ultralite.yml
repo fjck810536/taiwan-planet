@@ -9,14 +9,20 @@ on:
       - feedback/solver.js
       - feedback/solver_v2.js
       - scripts/bake-ultralite.mjs
+      - config/offshore-cartogram.mjs
       - .github/workflows/bake-ultralite.yml
 
 permissions:
   contents: write
 
+concurrency:
+  group: taiwan-planet-bake-main
+  cancel-in-progress: true
+
 jobs:
   bake:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -27,7 +33,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install build-only dependencies
         run: npm install --no-save --package-lock=false three@0.180.0 topojson-client@3

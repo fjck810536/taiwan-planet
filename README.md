@@ -1,27 +1,45 @@
 # Taiwan Planet
 
-一顆把台灣行政區拓撲重新投影到球面的互動小行星。
+一顆把台灣行政區拓撲重新投影成球面的互動小行星。
 
-## 正式版本
+## [▶ 直接玩 Taiwan Planet](https://fjck810536.github.io/taiwan-planet/)
 
-`main` 是唯一權威版本（canonical version）。
+手機可直接開啟。以 iOS Safari portrait-first 設計。
 
-目前正式視覺基準來自 commit `08e59f4c36899a3cf818d0a671f58dc78fe3c06c`，之後的 main commit 只做結構清理與維護，除非 commit 訊息另有說明。
+## v1 定案
 
-## 目前設計
+`main` 是唯一權威版本（canonical version）。本島拓撲、球面投影、南北極、鏡頭、手勢、標籤與指北針視為 v1 核心定案。
 
-- 台北六區（大同、中山、中正、大安、松山、信義）構成北極核心。
-- 本島與行政區經離線 solver 重新投影到球面。
-- 澎湖、金門、馬祖、綠島、蘭嶼、小琉球使用獨立的球面 cartogram layer。
-- 行政區標籤使用 HTML overlay，旋轉時保持正向。
-- 單指拖曳旋轉。
-- 雙指縮放／扭轉。
-- iOS Safari 的頁面縮放、長按選單、文字選取等原生干擾手勢被鎖定。
-- 沒有行政區點擊、選取或資訊面板。
+目前只刻意保留 **離島 cartogram** 的尺寸與位置調整空間；之後若要微調澎湖、金門、馬祖、綠島、蘭嶼或小琉球，只改：
 
-## 正式 runtime
+`config/offshore-cartogram.mjs`
 
-玩家端實際需要：
+其中：
+
+- `radiusDeg`：島在球面上的視覺大小
+- `bearingDeg`：相對參考點的方向
+- `distanceDeg`：相對參考點的球面距離
+
+修改後 GitHub Actions 會自動重新 bake 正式幾何。
+
+## 操作
+
+- **單指拖曳**：旋轉星球
+- **雙指 pinch**：縮放
+- **雙指扭轉**：改變鏡頭 roll
+- **右下紅白指北針**：顯示畫面中心沿球面最短路徑通往北極的方向
+- **點一下指北針**：保留目前位置與縮放，把北方平滑對齊螢幕正上方
+- 接近北極時，因局部「北方」逐漸失去定義，指北針會開始不穩並在極點高速亂轉
+
+## 世界定義
+
+北極由台北市 **大同、中山、中正、大安、松山、信義** 六區的球面中心共同定義；南極是其球體直徑的正對面。
+
+澎湖、金門、馬祖、綠島、蘭嶼、小琉球是獨立的 final-sphere cartogram layer，不參與本島 solver。
+
+## Runtime
+
+玩家端正式 runtime：
 
 - `index.html`
 - `feedback/ultralite.js`
@@ -29,21 +47,13 @@
 - `baked/meta.json`
 - `baked/map.bin`
 
-## Bake pipeline
+重新 bake 才需要：
 
-以下檔案只用於重新產生球面幾何：
-
+- `config/offshore-cartogram.mjs`
 - `feedback/geo.js`
 - `feedback/solver.js`
 - `feedback/solver_v2.js`
 - `scripts/bake-ultralite.mjs`
 - `.github/workflows/bake-ultralite.yml`
 
-修改 solver 或離島 cartogram 參數後，GitHub Actions 會在 `main` 上重新產生 `baked/map.bin` 與 `baked/meta.json`。
-
-## 操作
-
-- **單指拖曳**：旋轉行星
-- **雙指**：縮放／扭轉
-
-除此之外沒有可點擊 UI。
+正式入口：<https://fjck810536.github.io/taiwan-planet/>

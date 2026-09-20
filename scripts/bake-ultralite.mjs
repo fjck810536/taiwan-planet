@@ -3,6 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import * as THREE from "three";
 import { feature as topoFeature, merge as topoMerge } from "topojson-client";
+import { OFFSHORE_GROUPS } from "../config/offshore-cartogram.mjs";
 
 const ROOT = process.cwd();
 const DATA_URL = "https://cdn.jsdelivr.net/npm/taiwan-atlas@2021.9.20/towns-10t.json";
@@ -67,25 +68,8 @@ const POLAR_CORE_REGION_IDS = [
   "台北市|信義區"
 ];
 
-// Reuse the original administrative TopoJSON for offshore islands.
-// These regions are decorative world-space patches: they do not participate in the mainland solver.
-const OFFSHORE_GROUPS = [
-  // reference = nearby mainland point used only to establish the final globe's local east/north basis.
-  // bearing/distance place the island on the FINAL sphere, independent of the mainland solver.
-  // radius is the desired cartogram angular radius on the globe.
-  { id: "澎湖", label: "澎湖", county: "澎湖縣", towns: null,
-    reference: [120.18, 23.50], bearingDeg: 270, distanceDeg: 42, radiusDeg: 54, labelOffset: [0, -18] },
-  { id: "金門", label: "金門", county: "金門縣", towns: null,
-    reference: [120.25, 24.35], bearingDeg: 255, distanceDeg: 68, radiusDeg: 50, labelOffset: [0, -18] },
-  { id: "馬祖", label: "馬祖", county: "連江縣", towns: null,
-    reference: [121.05, 25.18], bearingDeg: 315, distanceDeg: 58, radiusDeg: 48, labelOffset: [0, -18] },
-  { id: "綠島", label: "綠島", county: "台東縣", towns: new Set(["綠島鄉"]),
-    reference: [121.10, 22.78], bearingDeg: 90, distanceDeg: 38, radiusDeg: 4, labelOffset: [0, -18] },
-  { id: "蘭嶼", label: "蘭嶼", county: "台東縣", towns: new Set(["蘭嶼鄉", "兰嶼鄉"]),
-    reference: [121.08, 22.38], bearingDeg: 125, distanceDeg: 58, radiusDeg: 6, labelOffset: [0, -18] },
-  { id: "小琉球", label: "小琉球", county: "屏東縣", towns: new Set(["琉球鄉"]),
-    reference: [120.50, 22.47], bearingDeg: 245, distanceDeg: 28, radiusDeg: 3, labelOffset: [0, -18] }
-];
+// Offshore cartogram parameters live in config/offshore-cartogram.mjs.
+// The mainland solver and the rest of the runtime are intentionally independent.
 
 function rawMergedFeature(label, geometries) {
   if (!geometries.length) return null;
@@ -424,7 +408,8 @@ const binary=Buffer.concat([
 ]);
 
 const meta={
-  version:4,
+  version:5,
+  schema:"taiwan-planet-v1",
   projection:"stereographic-neihu-170-baked",
   quantization:"snorm16",
   landValues:landArray.length,

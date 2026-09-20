@@ -137,6 +137,7 @@ const sphereIndexBuffer = gl.createBuffer();
 let meta = null;
 let labelItems = [];
 let poleItems = [];
+let resolvedPoles = null;
 let sphereIndexCount = 0;
 
 const POLAR_CORE_REGION_IDS = [
@@ -421,11 +422,14 @@ function requestRender() {
 }
 
 function resolvePoleAnchors() {
+  if (resolvedPoles) return resolvedPoles;
+
   if (meta?.poles?.north && meta?.poles?.south) {
-    return {
+    resolvedPoles = {
       north: normalize3(meta.poles.north.map(v => v / 32767)),
       south: normalize3(meta.poles.south.map(v => v / 32767))
     };
+    return resolvedPoles;
   }
 
   const anchors = POLAR_CORE_REGION_IDS.map(id => {
@@ -441,10 +445,11 @@ function resolvePoleAnchors() {
     )
   );
 
-  return {
+  resolvedPoles = {
     north,
     south: north.map(v => -v)
   };
+  return resolvedPoles;
 }
 
 function buildPoleMarkers() {
@@ -1177,8 +1182,8 @@ document.addEventListener("touchmove", e => {
 
 async function load() {
   const [metaResponse, binResponse] = await Promise.all([
-    fetch("./baked/meta.json", { cache: "force-cache" }),
-    fetch("./baked/map.bin", { cache: "force-cache" })
+    fetch("./baked/meta.json", { cache: "no-cache" }),
+    fetch("./baked/map.bin", { cache: "no-cache" })
   ]);
 
   if (!metaResponse.ok || !binResponse.ok) {
