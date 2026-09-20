@@ -166,6 +166,7 @@ let cameraZ = 3.0;
 
 let renderQueued = false;
 let compassChaosFrame = 0;
+let compassNorthingFrame = 0;
 
 function stableIndex(value, modulo) {
   let h = 0;
@@ -547,7 +548,7 @@ function compassState(viewRot, now = performance.now()) {
       now * COMPASS_CHAOS_SPIN_RAD_PER_MS +
       Math.sin(now * 0.031) * 1.3 +
       Math.sin(now * 0.017 + 1.7) * 0.9;
-    return { angle: chaos, poleDistance, chaosMix: 1 };
+    return { angle: chaos, baseAngle, poleDistance, chaosMix: 1 };
   }
 
   const chaoticAngle =
@@ -560,6 +561,7 @@ function compassState(viewRot, now = performance.now()) {
 
   return {
     angle: chaoticAngle,
+    baseAngle,
     poleDistance,
     chaosMix
   };
@@ -570,7 +572,7 @@ function updateCompass(viewRot, now = performance.now()) {
 
   const state = compassState(viewRot, now);
   compassNeedle.style.transform =
-    `translate(-50%,-100%) rotate(${state.angle}rad)`;
+    `translate(-50%,-50%) rotate(${state.angle}rad)`;
 
   compass.classList.toggle("unstable", state.chaosMix > 0.02);
   compass.classList.toggle("chaotic", state.chaosMix >= 0.999);
@@ -583,7 +585,7 @@ function updateCompass(viewRot, now = performance.now()) {
       const liveViewRot = cameraViewMatrix();
       const live = compassState(liveViewRot, time);
       compassNeedle.style.transform =
-        `translate(-50%,-100%) rotate(${live.angle}rad)`;
+        `translate(-50%,-50%) rotate(${live.angle}rad)`;
       compass.classList.toggle("unstable", live.chaosMix > 0.02);
       compass.classList.toggle("chaotic", live.chaosMix >= 0.999);
 
@@ -597,6 +599,71 @@ function updateCompass(viewRot, now = performance.now()) {
     compassChaosFrame = 0;
   }
 }
+
+function stopCompassNorthing() {
+  if (compassNorthingFrame) cancelAnimationFrame(compassNorthingFrame);
+  compassNorthingFrame = 0;
+}
+
+function alignScreenNorth() {
+  if (!meta || !compass) return;
+
+  stopSpin();
+  stopCompassNorthing();
+
+  const viewRot = cameraViewMatrix();
+  const state = compassState(viewRot);
+
+  // At the north pole itself, local north is mathematically undefined.
+  // Keep the intentional polar-chaos behavior instead of inventing a direction.
+  if (
+    state.poleDistance <= COMPASS_CHAOS_FULL_RAD ||
+    !Number.isFinite(state.baseAngle)
+  ) {
+    compass.classList.add("chaotic");
+    return;
+  }
+
+  const totalRoll = normalizeAngle(state.baseAngle);
+  if (Math.abs(totalRoll) < 0.001) {
+    requestRender();
+    return;
+  }
+
+  const duration = 260;
+  const started = performance.now();
+  let applied = 0;
+
+  const tick = now => {
+    const t = clamp01((now - started) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const targetApplied = totalRoll * eased;
+    const step = targetApplied - applied;
+    applied = targetApplied;
+
+    const rollDelta = quatFromAxisAngle([0, 0, 1], step);
+    cameraViewQuat = quatNormalize(
+      quatMultiply(rollDelta, cameraViewQuat)
+    );
+
+    drawScene();
+
+    if (t < 1) {
+      compassNorthingFrame = requestAnimationFrame(tick);
+    } else {
+      compassNorthingFrame = 0;
+      requestRender();
+    }
+  };
+
+  compassNorthingFrame = requestAnimationFrame(tick);
+}
+
+compass?.addEventListener("click", e => {
+  e.preventDefault();
+  e.stopPropagation();
+  alignScreenNorth();
+});
 
 function buildLabels() {
   labelsLayer.replaceChildren();
@@ -908,6 +975,7 @@ canvas.addEventListener("pointerdown", e => {
   e.preventDefault();
 
   stopSpin();
+  stopCompassNorthing();
   canvas.setPointerCapture?.(e.pointerId);
 
   const point = {
