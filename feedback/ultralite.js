@@ -2,6 +2,8 @@ import { REGION_COLORS, DEFAULT_REGION_COLORS } from "./palette.js";
 
 const stage = document.querySelector("#stage");
 const labelsLayer = document.querySelector("#labels");
+const compass = document.querySelector("#compass");
+const compassNeedle = document.querySelector("#compassNeedle");
 
 const LAND_RADIUS = 1.009;
 const BORDER_RADIUS = 1.016;
@@ -148,12 +150,22 @@ const POLAR_CORE_REGION_IDS = [
 
 const INITIAL_NORTH_VIEW = normalize3([0, 0.82, 0.58]);
 
+// Spherical compass tuning.
+// The compass shows the great-circle direction from the screen-center surface point
+// toward the canonical north pole. Near the pole that direction becomes undefined,
+// so the needle intentionally destabilizes instead of fading out.
+const COMPASS_UNSTABLE_START_RAD = 8 * Math.PI / 180;
+const COMPASS_CHAOS_FULL_RAD = 1 * Math.PI / 180;
+const COMPASS_CHAOS_SPIN_RAD_PER_MS = 0.020;
+const COMPASS_TANGENT_EPS = 1e-7;
+
 // One pose only: camera trackball orientation.
 // This quaternion maps world axes into camera/view axes.
 let cameraViewQuat = [0, 0, 0, 1];
 let cameraZ = 3.0;
 
 let renderQueued = false;
+let compassChaosFrame = 0;
 
 function stableIndex(value, modulo) {
   let h = 0;
@@ -211,6 +223,24 @@ function transform3(m, v) {
     m[1] * x + m[4] * y + m[7] * z,
     m[2] * x + m[5] * y + m[8] * z
   ];
+}
+
+function transform3Transpose(m, v) {
+  const x = v[0], y = v[1], z = v[2];
+  return [
+    m[0] * x + m[1] * y + m[2] * z,
+    m[3] * x + m[4] * y + m[5] * z,
+    m[6] * x + m[7] * y + m[8] * z
+  ];
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function smoothstep01(value) {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
 }
 
 function quatNormalize(q) {
@@ -380,6 +410,7 @@ function drawScene() {
 
   updateLabels(viewRot);
   updatePoleMarkers(viewRot);
+  updateCompass(viewRot);
 }
 
 function requestRender() {
@@ -472,6 +503,98 @@ function updatePoleMarkers(viewRot) {
     item.el.style.opacity = String(
       Math.max(0, Math.min(1, facing * 4.0))
     );
+  }
+}
+
+function compassState(viewRot, now = performance.now()) {
+  const poles = resolvePoleAnchors();
+  const north = poles.north;
+
+  // The screen-center ray hits the front-most point of the globe at +Z in camera space.
+  // Convert that surface normal back into world space.
+  const centerPoint = normalize3(
+    transform3Transpose(viewRot, [0, 0, 1])
+  );
+
+  const northDot = Math.max(-1, Math.min(1, dot3(centerPoint, north)));
+  const poleDistance = Math.acos(northDot);
+
+  // Project north into the tangent plane at the current center point.
+  const tangent = [
+    north[0] - northDot * centerPoint[0],
+    north[1] - northDot * centerPoint[1],
+    north[2] - northDot * centerPoint[2]
+  ];
+  const tangentLength = Math.hypot(tangent[0], tangent[1], tangent[2]);
+
+  let baseAngle = 0;
+  if (tangentLength > COMPASS_TANGENT_EPS) {
+    const cameraTangent = transform3(
+      viewRot,
+      tangent.map(v => v / tangentLength)
+    );
+    // CSS zero degrees points upward. Positive rotation is clockwise on screen.
+    baseAngle = Math.atan2(cameraTangent[0], cameraTangent[1]);
+  }
+
+  const chaosMix = smoothstep01(
+    (COMPASS_UNSTABLE_START_RAD - poleDistance) /
+    (COMPASS_UNSTABLE_START_RAD - COMPASS_CHAOS_FULL_RAD)
+  );
+
+  if (poleDistance <= COMPASS_CHAOS_FULL_RAD || tangentLength <= COMPASS_TANGENT_EPS) {
+    const chaos =
+      now * COMPASS_CHAOS_SPIN_RAD_PER_MS +
+      Math.sin(now * 0.031) * 1.3 +
+      Math.sin(now * 0.017 + 1.7) * 0.9;
+    return { angle: chaos, poleDistance, chaosMix: 1 };
+  }
+
+  const chaoticAngle =
+    baseAngle +
+    chaosMix * (
+      now * COMPASS_CHAOS_SPIN_RAD_PER_MS * 0.65 +
+      Math.sin(now * 0.027) * 0.9 +
+      Math.sin(now * 0.013 + 0.8) * 0.55
+    );
+
+  return {
+    angle: chaoticAngle,
+    poleDistance,
+    chaosMix
+  };
+}
+
+function updateCompass(viewRot, now = performance.now()) {
+  if (!compass || !compassNeedle || !meta) return;
+
+  const state = compassState(viewRot, now);
+  compassNeedle.style.transform =
+    `translate(-50%,-100%) rotate(${state.angle}rad)`;
+
+  compass.classList.toggle("unstable", state.chaosMix > 0.02);
+  compass.classList.toggle("chaotic", state.chaosMix >= 0.999);
+
+  if (state.chaosMix > 0.02 && !compassChaosFrame) {
+    const tick = time => {
+      compassChaosFrame = 0;
+      if (!meta) return;
+
+      const liveViewRot = cameraViewMatrix();
+      const live = compassState(liveViewRot, time);
+      compassNeedle.style.transform =
+        `translate(-50%,-100%) rotate(${live.angle}rad)`;
+      compass.classList.toggle("unstable", live.chaosMix > 0.02);
+      compass.classList.toggle("chaotic", live.chaosMix >= 0.999);
+
+      if (live.chaosMix > 0.02) {
+        compassChaosFrame = requestAnimationFrame(tick);
+      }
+    };
+    compassChaosFrame = requestAnimationFrame(tick);
+  } else if (state.chaosMix <= 0.02 && compassChaosFrame) {
+    cancelAnimationFrame(compassChaosFrame);
+    compassChaosFrame = 0;
   }
 }
 
